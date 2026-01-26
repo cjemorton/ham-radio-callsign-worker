@@ -26,8 +26,20 @@ The Ham Radio Callsign Worker serves several key purposes:
 
 1. **Callsign Lookups**: Fast, efficient lookups of amateur radio callsigns with detailed information
 2. **Database Management**: Administrative functions for maintaining and updating callsign databases
-3. **Data Export**: Capabilities for exporting callsign data in various formats
-4. **Health Monitoring**: Endpoint monitoring and system health reporting
+3. **Data Synchronization**: Intelligent data fetching, validation, and differential updates from external sources
+4. **Multi-Tier Caching**: Distributed caching across Cloudflare infrastructure and optional external caches
+5. **Data Export**: Capabilities for exporting callsign data in various formats
+6. **Health Monitoring**: Endpoint monitoring and system health reporting
+
+### Key Features
+
+- **On-Demand Data Updates**: Automatic and manual triggers for fetching latest callsign data
+- **Intelligent Diffing**: Only updates changed records to minimize database operations
+- **Validation & Integrity**: Hash-based validation and schema verification for all data
+- **Fallback & Recovery**: Automatic rollback to last known good data on validation failures
+- **Distributed Sync**: Optional synchronization to external SQL databases and Redis caches
+- **Comprehensive Logging**: Structured JSONL logs with audit trails stored in R2
+- **Progressive Web App Support**: API designed for integration with PWAs and mobile applications
 
 ### Target Audience
 
@@ -35,6 +47,7 @@ The Ham Radio Callsign Worker serves several key purposes:
 - Ham radio applications and services needing callsign data
 - Database administrators managing callsign records
 - Developers integrating callsign lookups into their applications
+- Organizations requiring distributed callsign database synchronization
 
 ## Architectural Vision
 
@@ -61,48 +74,101 @@ The system is built on Cloudflare's serverless platform with the following archi
 
 ### System Architecture
 
+The architecture follows a multi-tier design with Cloudflare Workers at the core, supported by Cloudflare's data services and optional external synchronization targets.
+
 ```
-┌─────────────────┐
-│   Client Apps   │
-│  (Web, Mobile)  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Cloudflare     │
-│  Edge Network   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│     Ham Radio Callsign Worker           │
-│  ┌──────────────────────────────────┐   │
-│  │  API Router & Request Handler    │   │
-│  └──────────────┬───────────────────┘   │
-│                 │                        │
-│  ┌──────────────┴───────────────────┐   │
-│  │                                  │   │
-│  │  User Endpoints  Admin Endpoints │   │
-│  │  - Query         - Force Update  │   │
-│  │  - Search        - Rebuild       │   │
-│  │  - Export        - Rollback      │   │
-│  │  - Health        - Logs          │   │
-│  │                                  │   │
-│  └──────────────┬───────────────────┘   │
-└─────────────────┼───────────────────────┘
-                  │
-     ┌────────────┼────────────┐
-     │            │            │
-     ▼            ▼            ▼
-┌─────────┐  ┌─────────┐  ┌─────────┐
-│   D1    │  │   KV    │  │   R2    │
-│Database │  │ Storage │  │ Storage │
-└─────────┘  └─────────┘  └─────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     Client Applications                         │
+│            (Web Apps, Mobile Apps, PWAs, IoT Devices)           │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Cloudflare Edge Network                        │
+│                  (Global CDN & DDoS Protection)                 │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Ham Radio Callsign Worker (Core)                   │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │           API Router & Request Handler                   │   │
+│  │  - Authentication & Authorization                        │   │
+│  │  - Rate Limiting & CORS                                  │   │
+│  │  - Structured Logging                                    │   │
+│  └────────────────┬────────────────────────────┬────────────┘   │
+│                   │                            │                │
+│  ┌────────────────▼────────────┐  ┌────────────▼─────────────┐  │
+│  │   User API Endpoints        │  │  Admin API Endpoints     │  │
+│  │  - Query (/api/v1/callsign) │  │  - Update (/admin/update)│  │
+│  │  - Search (/api/v1/search)  │  │  - Rebuild               │  │
+│  │  - Export (/api/v1/export)  │  │  - Rollback              │  │
+│  │  - Health (/health)         │  │  - Logs & Metadata       │  │
+│  └────────────────┬────────────┘  └────────────┬─────────────┘  │
+│                   │                            │                │
+│  ┌────────────────▼────────────────────────────▼─────────────┐  │
+│  │              Business Logic Layer                         │  │
+│  │  ┌───────────────┐  ┌──────────────┐  ┌────────────────┐ │  │
+│  │  │Configuration  │  │Data Fetch &  │  │ Diff & Patch   │ │  │
+│  │  │Manager        │  │Validation    │  │ Engine         │ │  │
+│  │  └───────────────┘  └──────────────┘  └────────────────┘ │  │
+│  │  ┌───────────────┐  ┌──────────────┐  ┌────────────────┐ │  │
+│  │  │Callsign Query │  │Export        │  │Slave Sync      │ │  │
+│  │  │& Search       │  │Generator     │  │Propagation     │ │  │
+│  │  └───────────────┘  └──────────────┘  └────────────────┘ │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└────────────────────────────┬─┼──────────────────────────────────┘
+                             │ │
+         ┌───────────────────┼─┼───────────────────┐
+         │                   │ │                   │
+         ▼                   ▼ ▼                   ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ Cloudflare KV   │  │ Cloudflare D1   │  │ Cloudflare R2   │
+│   Namespaces    │  │    Database     │  │  Object Storage │
+│                 │  │                 │  │                 │
+│ • Config Store  │  │ • Callsign Data │  │ • Data Exports  │
+│ • Cache Layer   │  │ • Indexes       │  │ • Backup Files  │
+│ • Metadata      │  │ • Version Info  │  │ • Audit Logs    │
+└─────────────────┘  └─────────────────┘  │ • Diff Reports  │
+                                           │ • Event Logs    │
+                                           └─────────────────┘
+
+      Optional External Synchronization (Phase 6)
+      ┌───────────────────────────────────────────┐
+      │                                           │
+      ▼                                           ▼
+┌─────────────────┐                    ┌─────────────────┐
+│  External SQL   │                    │ External Redis  │
+│   Databases     │                    │     Caches      │
+│                 │                    │                 │
+│ • Slave Sync    │                    │ • Distributed   │
+│ • Read Replicas │                    │   Caching       │
+│ • Analytics     │                    │ • Session Store │
+└─────────────────┘                    └─────────────────┘
+
+                   Data Source (External)
+                   ┌─────────────────┐
+                   │  Origin Server  │
+                   │                 │
+                   │ • ZIP Archives  │
+                   │ • Source Data   │
+                   │ • Updates       │
+                   └─────────────────┘
 ```
+
+**Data Flow**:
+1. **Query Flow**: Client → Edge Network → Worker → D1/KV Cache → Response
+2. **Update Flow**: Admin → Worker → Fetch ZIP → Validate → Diff → Patch D1 → Sync Slaves → Log to R2
+3. **Configuration Flow**: KV Config Store → Worker Configuration Module → Runtime Behavior
+4. **Monitoring Flow**: All Operations → Structured Logs → R2 Storage → Admin Endpoints
 
 ## High-Level Design & Requirements
 
-### Phase 1: Project Initialization ✅ (Current Phase)
+This project follows a phased development approach as outlined in [Issue #4](https://github.com/cjemorton/ham-radio-callsign-worker/issues/4). Each phase builds upon the previous one to create a robust, production-ready callsign lookup service.
+
+### Phase 1: Project Initialization ✅ (Completed)
+
+**Status**: Complete
 
 - [x] Initialize Cloudflare Worker project with TypeScript
 - [x] Set up Wrangler 3 configuration
@@ -113,7 +179,7 @@ The system is built on Cloudflare's serverless platform with the following archi
 
 ### Phase 2: API and Endpoint Layer ✅ (Completed)
 
-Based on [Issue #1](https://github.com/cjemorton/ham-radio-callsign-worker/issues/1):
+**Status**: Complete | **Reference**: [Issue #1](https://github.com/cjemorton/ham-radio-callsign-worker/issues/1)
 
 #### User Endpoints (Public API)
 
@@ -147,42 +213,215 @@ Based on [Issue #1](https://github.com/cjemorton/ham-radio-callsign-worker/issue
 - **Logging**: Structured logging for all requests ✅
 - **Documentation**: Comprehensive API documentation with examples ✅
 
-### Phase 3: Data Layer & Storage
+### Phase 3: Configuration and Infrastructure Setup
 
-- D1 database schema design for callsign data
-- KV namespace setup for caching frequently accessed data
-- KV namespace for metadata and configuration
-- R2 bucket configuration for exports and backups
-- Data migration and seeding utilities
+**Status**: Planned | **Reference**: [Issue #5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5)
 
-### Phase 4: Business Logic
+**Objective**: Establish the configuration management system for dynamic, centralized control of all worker behavior and data sources.
 
-- Callsign lookup and validation logic
-- Search and query processing
-- Data export generation (JSON, CSV, etc.)
-- Database update and synchronization logic
+#### Key Deliverables:
 
-### Phase 5: Security & Rate Limiting
+- [ ] **Configuration Module Development**
+  - Implement configuration loading/refresh from a single namespaced JSON object in Cloudflare KV
+  - Support dynamic reloading without redeployment
+  
+- [ ] **Infrastructure Configuration Storage**
+  - Origin ZIP URL and file naming configuration
+  - Expected data schema and validation rules
+  - Backup and fallback endpoint configurations
+  - Slave SQL/Redis connection configurations
+  - Feature flags (JWT, canary deployments, etc.)
+  
+- [ ] **Configuration Management**
+  - Version tracking and hash validation for configurations
+  - Configuration rollback capability (admin function)
+  - Configuration health/version endpoint
+  
+- [ ] **Documentation**
+  - Document required configuration structure and schema
+  - Provide configuration examples and best practices
+  - Document configuration update procedures
 
-- API key authentication system
-- JWT authentication preparation
-- Rate limiting implementation
-- Input validation and sanitization
-- Security headers and CORS configuration
+This phase establishes the foundation for all subsequent data operations by providing a centralized, version-controlled configuration system.
 
-### Phase 6: Testing & Quality
+### Phase 4: Data Fetch, Extraction, and Validation Engine
 
-- Unit tests for all modules
-- Integration tests for API endpoints
-- Load testing and performance optimization
-- Security auditing
+**Status**: Planned | **Reference**: [Issue #12](https://github.com/cjemorton/ham-radio-callsign-worker/issues/12)
 
-### Phase 7: Documentation & Deployment
+**Objective**: Build the core engine for on-demand data fetching, extraction, and validation from external sources.
 
-- OpenAPI/Swagger specification
-- API usage examples and tutorials
-- Deployment documentation
-- Monitoring and alerting setup
+#### Key Deliverables:
+
+- [ ] **Data Fetching Engine**
+  - Fetch ZIP files from KV-configured origin URLs
+  - Trigger fetches based on staleness detection or on-demand requests
+  - Implement retry logic with exponential backoff
+  
+- [ ] **Extraction and Validation**
+  - Extract target files from ZIP archives
+  - Validate file presence and integrity using hash validation
+  - Verify header/schema match against KV configuration
+  - Content validation against expected data format
+  
+- [ ] **Error Handling and Fallback**
+  - Comprehensive error logging for fetch/validation failures
+  - Fallback to last known good data on validation failures
+  - Store event logs, metadata, and diffs in R2 (JSONL format with rotation)
+  
+- [ ] **Staging and Deployment Features**
+  - Staging/canary deployment support via configuration flags
+  - Admin endpoints for manual data refresh triggers
+  
+- [ ] **Documentation**
+  - Document fetch/extract/validate workflow
+  - Provide troubleshooting guide for common failure scenarios
+  - Update README with endpoint documentation
+
+### Phase 5: Data Diffing, Patching, and Recovery
+
+**Status**: Planned | **Reference**: [Issue #11](https://github.com/cjemorton/ham-radio-callsign-worker/issues/11)
+
+**Objective**: Implement intelligent differential updates to minimize database operations and enable safe rollbacks.
+
+#### Key Deliverables:
+
+- [ ] **Differential Analysis**
+  - Compare newly extracted data with previous version by hash and record keys
+  - Identify records to add, update, and remove
+  - Generate comprehensive diff reports
+  
+- [ ] **Efficient Database Patching**
+  - Patch Cloudflare D1 database with only changed records
+  - Minimize write operations for better performance
+  - Transactional updates to ensure data consistency
+  
+- [ ] **Metadata and Reporting**
+  - Calculate and store diff reports in R2
+  - Track update statistics (records added/modified/removed)
+  - Maintain version history with timestamps
+  
+- [ ] **Recovery and Rollback**
+  - Safe rollback to last known good version
+  - Admin-triggered or automatic fallback on validation failures
+  - Data backup before each update operation
+  
+- [ ] **Documentation**
+  - Document diff/patch/recovery process
+  - Provide logging approach and troubleshooting steps
+  - Update README with rollback procedures
+
+### Phase 6: Slave Synchronization and External Cache Layer
+
+**Status**: Planned | **Reference**: [Issue #10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10)
+
+**Objective**: Enable synchronization with external SQL databases and Redis caches for distributed deployments.
+
+#### Key Deliverables:
+
+- [ ] **Dynamic Slave Configuration**
+  - Load slave SQL/Redis endpoints from KV configuration
+  - Support multiple slave targets with independent configurations
+  - Hot-reload slave configurations without service interruption
+  
+- [ ] **Propagation Engine**
+  - Propagate delta updates to all configured slaves after master updates
+  - Implement minimal change propagation (only changed records)
+  - Parallel synchronization to multiple targets
+  
+- [ ] **Health Tracking and Monitoring**
+  - Track sync events and last-sync metadata for each slave
+  - Monitor slave endpoint health and availability
+  - Generate sync status reports
+  
+- [ ] **Error Handling**
+  - Graceful fallback when slave endpoints are unavailable
+  - Log errors without blocking core worker functionality
+  - Implement retry logic with configurable parameters
+  
+- [ ] **Canary Deployments**
+  - Support canary rollout via admin-configured flags
+  - Gradual slave activation for testing
+  
+- [ ] **Documentation**
+  - Document slave configuration structure
+  - Provide setup guide for SQL/Redis slaves
+  - Update README with synchronization workflow details
+
+### Phase 7: Logging, Audit, and Monitoring Infrastructure
+
+**Status**: Planned | **Reference**: [Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8)
+
+**Objective**: Establish comprehensive logging, audit trails, and monitoring capabilities for operational visibility.
+
+#### Key Deliverables:
+
+- [ ] **Structured Logging System**
+  - Implement JSONL-formatted logs stored in R2
+  - Event-level and error-level logging with appropriate detail
+  - Automatic log rotation to manage storage
+  
+- [ ] **Audit Trails**
+  - Track all data updates, configuration changes, and admin actions
+  - Maintain version history with full audit metadata
+  - Store diff reports for each update cycle
+  
+- [ ] **Monitoring Endpoints**
+  - Metadata endpoints for viewing status, version, and logs
+  - Health check endpoints with detailed component status
+  - Performance metrics and statistics endpoints
+  
+- [ ] **Operational Procedures**
+  - Log inspection and retrieval tools
+  - Log rotation and archival procedures
+  - Error/fallback/recovery event handling documentation
+  
+- [ ] **Documentation**
+  - Document logging structure and format
+  - Provide log analysis and troubleshooting guide
+  - Update README with all monitoring procedures
+
+### Phase 8: Testing, E2E Verification, and PWA Integration
+
+**Status**: Planned | **Reference**: [Issue #7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7)
+
+**Objective**: Establish comprehensive testing infrastructure and provide integration examples for client applications.
+
+#### Key Deliverables:
+
+- [ ] **Testing Infrastructure**
+  - Modular unit test suites for each component
+  - Integration tests for API endpoints and workflows
+  - End-to-end test harness for update+query cycles
+  - Leverage Cloudflare testing frameworks (Miniflare, Wrangler dev)
+  
+- [ ] **Component-Specific Tests**
+  - KV configuration loading and validation tests
+  - Fetch/validation engine tests with mock data
+  - Diffing and patching logic tests
+  - Endpoint authentication and authorization tests
+  
+- [ ] **Edge Case Testing**
+  - Manual test flows for data edge cases
+  - Failure and fallback scenario testing
+  - Recovery and rollback verification
+  - Rate limiting and security tests
+  
+- [ ] **Integration Examples**
+  - Sample scripts for cache/DB synchronization
+  - Query examples for all storage layers
+  - API usage examples and best practices
+  
+- [ ] **Progressive Web App (PWA) Integration**
+  - PWA integration guide and documentation
+  - Sample PWA implementation with API usage
+  - Offline caching strategies
+  - Real-time update notifications
+  
+- [ ] **Documentation**
+  - Comprehensive testing guide
+  - API integration examples
+  - PWA development guide
+  - Update README with testing and integration information
 
 ## Getting Started
 
@@ -746,6 +985,10 @@ To handle preflight requests, send an `OPTIONS` request to any endpoint.
 
 ## Configuration
 
+### Overview
+
+The Ham Radio Callsign Worker uses a multi-layered configuration approach combining static Wrangler configuration with dynamic KV-based runtime configuration (to be implemented in Phase 3 - [Issue #5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5)).
+
 ### Environment Variables
 
 Configuration is managed through `wrangler.toml` and environment-specific variables:
@@ -759,15 +1002,58 @@ The following Cloudflare resources are configured as placeholders in `wrangler.t
 
 - **KV Namespaces**:
   - `CALLSIGN_CACHE`: For caching callsign lookup results
-  - `METADATA_STORE`: For system metadata and configuration
-
+  - `METADATA_STORE`: For system metadata and dynamic configuration (Phase 3)
+  
 - **D1 Database**:
   - `CALLSIGN_DB`: Main database for callsign data
 
 - **R2 Bucket**:
-  - `DATA_EXPORTS`: For storing data exports and backups
+  - `DATA_EXPORTS`: For storing data exports, backups, and audit logs
 
 To activate these bindings, uncomment the relevant sections in `wrangler.toml` and configure the resource IDs through the Cloudflare dashboard.
+
+### Dynamic Configuration (Phase 3)
+
+Phase 3 will introduce a comprehensive KV-based configuration system with the following capabilities:
+
+#### Configuration Structure
+
+The dynamic configuration will be stored as a single namespaced JSON object in KV, containing:
+
+- **Data Source Configuration**
+  - Origin ZIP URL for data fetching
+  - ZIP file name and structure
+  - Extracted file name and expected format
+  - Update frequency and staleness thresholds
+
+- **Validation Rules**
+  - Expected data schema and headers
+  - Hash validation requirements
+  - Content validation rules
+
+- **Infrastructure Endpoints**
+  - Backup data source URLs
+  - Fallback endpoints for redundancy
+
+- **External Sync Configuration** (Phase 6)
+  - Slave SQL database connections
+  - Redis cache endpoints
+  - Sync frequency and retry parameters
+
+- **Feature Flags**
+  - JWT authentication toggle
+  - Canary deployment settings
+  - Experimental feature flags
+
+#### Configuration Management Features
+
+- **Version Control**: Track configuration versions with hashes
+- **Rollback Capability**: Admin endpoint to revert to previous configurations
+- **Hot Reload**: Update configuration without worker redeployment
+- **Health Monitoring**: Configuration validation and health checks
+- **Audit Trail**: Track all configuration changes
+
+See [Issue #5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5) for the complete specification.
 
 ## Development
 
@@ -810,6 +1096,10 @@ Run `npm run format` before committing to ensure consistent code style.
 
 ## Testing
 
+### Current Testing Infrastructure
+
+The project uses Vitest as the testing framework with tests located in the `test/` directory.
+
 ### Running Tests
 
 ```bash
@@ -818,20 +1108,146 @@ npm test
 
 # Run tests in watch mode
 npm run test:watch
+
+# Run tests with coverage
+npm test -- --coverage
 ```
 
 ### Test Structure
 
-Tests are located in the `test/` directory and use Vitest as the testing framework. Each module should have corresponding test files with the `.test.ts` extension.
+Tests are organized by module with the `.test.ts` extension. Each module should have corresponding test files that verify:
+- Core functionality
+- Edge cases
+- Error handling
+- Input validation
 
 ### Writing Tests
 
 Follow these guidelines when writing tests:
 
-1. Use descriptive test names
+1. Use descriptive test names that explain what is being tested
 2. Test both success and error cases
-3. Mock external dependencies (KV, D1, R2)
+3. Mock external dependencies (KV, D1, R2, external APIs)
 4. Aim for high code coverage on business logic
+5. Use test fixtures for consistent test data
+
+**Example Test Structure**:
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('Callsign Lookup', () => {
+  it('should return callsign data for valid callsign', async () => {
+    // Test implementation
+  });
+
+  it('should return 404 for non-existent callsign', async () => {
+    // Test implementation
+  });
+
+  it('should validate callsign format', () => {
+    // Test implementation
+  });
+});
+```
+
+### Comprehensive Testing Strategy (Phase 8)
+
+Phase 8 ([Issue #7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7)) will establish comprehensive testing infrastructure:
+
+#### Unit Testing
+
+**Component-Level Tests**:
+- **Configuration Module**: KV config loading, validation, versioning
+- **Fetch Engine**: ZIP download, extraction, retry logic
+- **Validation Engine**: Hash validation, schema checking, content validation
+- **Diff Engine**: Record comparison, change detection
+- **Patch Engine**: Database updates, transaction handling
+- **Sync Engine**: Slave propagation, health tracking
+- **API Handlers**: Request parsing, response formatting, error handling
+
+**Test Coverage Goals**:
+- Business logic: 90%+ coverage
+- API endpoints: 100% coverage
+- Error paths: Complete coverage
+
+#### Integration Testing
+
+**Multi-Component Tests**:
+- End-to-end API request flows
+- Database read/write operations
+- KV configuration loading and usage
+- R2 log storage and retrieval
+- Authentication and authorization
+- Rate limiting behavior
+
+**Test Scenarios**:
+- Successful callsign lookup
+- Search with various query types
+- Data export generation
+- Admin update workflow
+- Rollback procedures
+- Failure recovery
+
+#### End-to-End Testing
+
+**Complete Workflow Tests**:
+- Full update cycle: fetch → validate → diff → patch → sync → log
+- User query cycle: request → cache check → DB lookup → response
+- Admin workflow: authentication → operation → logging
+- Failure scenarios: validation failure → fallback → recovery
+
+**Test Harness**:
+- Cloudflare Workers testing frameworks (Miniflare, Wrangler dev)
+- Mock external data sources
+- Simulated update scenarios
+- Performance benchmarks
+
+#### Edge Case Testing
+
+**Manual Test Flows** (to be documented):
+- Empty database scenarios
+- Corrupted data handling
+- Network failures and retries
+- Concurrent update operations
+- Large dataset handling
+- Rate limit boundary conditions
+- Invalid configuration handling
+
+#### Load and Performance Testing
+
+- **Concurrent Requests**: Test under high load
+- **Response Times**: Benchmark query performance
+- **Memory Usage**: Monitor resource consumption
+- **Database Performance**: Test query optimization
+- **Cache Efficiency**: Measure cache hit rates
+
+#### Security Testing
+
+- **Authentication**: Verify API key validation
+- **Authorization**: Test role-based access
+- **Input Validation**: SQL injection, XSS attempts
+- **Rate Limiting**: Verify rate limit enforcement
+- **Data Integrity**: Ensure validation prevents corruption
+
+#### Testing Tools and Frameworks
+
+- **Vitest**: Primary test runner
+- **Miniflare**: Local Cloudflare Workers simulation
+- **Wrangler Dev**: Development environment testing
+- **Mock Libraries**: For external dependencies
+- **Coverage Tools**: Code coverage reporting
+
+#### Sample Scripts and Examples
+
+Phase 8 will provide:
+- Sample test suites for each component
+- Mock data generators
+- Test fixtures for common scenarios
+- Integration test examples
+- Performance test scripts
+- Security test cases
+
+See [Issue #7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7) for complete testing specifications.
 
 ## Deployment
 
@@ -863,8 +1279,11 @@ wrangler deploy --env production
 
 ## Logging
 
-The worker uses structured logging with configurable log levels:
+The worker uses structured logging with configurable log levels. The logging infrastructure will be significantly enhanced in Phase 7 ([Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8)).
 
+### Current Logging
+
+**Log Levels**:
 - `debug`: Detailed debugging information
 - `info`: General informational messages
 - `warn`: Warning messages
@@ -872,15 +1291,349 @@ The worker uses structured logging with configurable log levels:
 
 Log level is configured via the `LOG_LEVEL` environment variable in `wrangler.toml`.
 
+### Planned Logging Infrastructure (Phase 7)
+
+The comprehensive logging system will include:
+
+#### Structured JSONL Logs
+
+- **Format**: JSON Lines (JSONL) for easy parsing and analysis
+- **Storage**: R2 bucket with automatic rotation
+- **Levels**: Event-level and error-level categorization
+- **Content**:
+  - Request/response metadata
+  - Data update events
+  - Configuration changes
+  - Admin actions
+  - Error stack traces
+  - Performance metrics
+
+#### Log Categories
+
+1. **Event Logs**: Normal operations (queries, updates, sync events)
+2. **Error Logs**: Failures, exceptions, and validation errors
+3. **Audit Logs**: Admin actions, configuration changes, rollbacks
+4. **Diff Reports**: Detailed reports of data changes during updates
+5. **Version History**: Complete version trail with timestamps
+
+#### Log Management
+
+- **Rotation**: Automatic rotation to manage storage costs
+- **Retention**: Configurable retention periods
+- **Retrieval**: Admin endpoints for log inspection
+- **Search**: Query logs by timestamp, level, or event type
+
+#### Monitoring Endpoints
+
+- `GET /admin/logs?limit=100&level=error` - Retrieve filtered logs
+- `GET /admin/metadata` - View database and system metadata
+- `GET /admin/stats` - System statistics and metrics
+
+See [Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8) for complete specifications.
+
+## Data Update Workflow
+
+The worker implements a sophisticated data update workflow that will be fully realized across Phases 4-7:
+
+### Update Trigger Mechanisms
+
+1. **Scheduled Updates**: Periodic checks based on staleness detection
+2. **On-Demand Updates**: Admin-triggered via `/admin/update` endpoint
+3. **Webhook Updates**: External trigger support (future enhancement)
+
+### Update Process Flow
+
+```
+1. Trigger Detection (Schedule or Admin Request)
+         ↓
+2. Fetch ZIP from Origin (Phase 4 - Issue #12)
+   - Retrieve from KV-configured URL
+   - Retry logic with exponential backoff
+   - Validate ZIP integrity
+         ↓
+3. Extract and Validate (Phase 4 - Issue #12)
+   - Extract target file from ZIP
+   - Validate hash against expected value
+   - Verify schema/header match
+   - Content validation
+         ↓
+4. Differential Analysis (Phase 5 - Issue #11)
+   - Compare with previous version
+   - Identify added/modified/removed records
+   - Generate diff report
+         ↓
+5. Database Patching (Phase 5 - Issue #11)
+   - Apply only changed records to D1
+   - Transactional update
+   - Backup current state before update
+         ↓
+6. Slave Synchronization (Phase 6 - Issue #10)
+   - Propagate changes to external SQL/Redis
+   - Parallel sync to all configured slaves
+   - Track sync health and status
+         ↓
+7. Logging and Metadata (Phase 7 - Issue #8)
+   - Store diff reports in R2
+   - Update version metadata
+   - Log event details
+   - Update health metrics
+         ↓
+8. Success Response or Fallback
+   - Return success if all steps complete
+   - OR rollback to last known good state on failure
+```
+
+### Validation and Fallback
+
+- **Hash Validation**: Every data file is validated against expected hash
+- **Schema Validation**: Headers and structure verified before processing
+- **Content Validation**: Data format and completeness checks
+- **Automatic Fallback**: On validation failure, retain last known good data
+- **Manual Rollback**: Admin endpoint to revert to specific version
+
+### Error Handling
+
+- **Comprehensive Logging**: All failures logged with context
+- **Graceful Degradation**: Service continues with cached data during failures
+- **Admin Notifications**: Critical errors surfaced via admin endpoints
+- **Recovery Procedures**: Documented recovery steps for common scenarios
+
 ## Rate Limiting
 
-Rate limiting will be implemented to protect the API from abuse. Planned limits:
+Rate limiting is implemented to protect the API from abuse and ensure fair usage across all clients.
 
-- **User Endpoints**: 100 requests/minute per IP
-- **Admin Endpoints**: 20 requests/minute per API key
-- **Export Endpoints**: 10 requests/hour per API key
+### Rate Limits
 
-Implementation details will be added in Phase 5.
+The following rate limits are enforced:
+
+- **User Endpoints**: 100 requests per minute per IP address
+  - `/api/v1/callsign/:callsign`
+  - `/api/v1/search`
+  - `/api/v1/export`
+  - `/health`
+  - `/version`
+
+- **Admin Endpoints**: 20 requests per minute per API key
+  - `/admin/update`
+  - `/admin/rebuild`
+  - `/admin/rollback`
+  - `/admin/logs`
+  - `/admin/metadata`
+  - `/admin/stats`
+
+- **Export Endpoints**: 10 requests per hour per API key (planned)
+  - Enhanced limits for resource-intensive export operations
+
+### Rate Limit Headers
+
+Every API response includes rate limit information in the headers:
+
+- `X-RateLimit-Limit`: Maximum number of requests allowed in the current window
+- `X-RateLimit-Remaining`: Number of requests remaining in the current window
+- `X-RateLimit-Reset`: Unix timestamp when the rate limit resets
+
+**Example Headers**:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 87
+X-RateLimit-Reset: 1706270400
+```
+
+### Rate Limit Exceeded Response
+
+When rate limited, clients receive a `429 Too Many Requests` response:
+
+```json
+{
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded. Please try again later.",
+  "timestamp": "2026-01-26T12:00:00.000Z",
+  "details": {
+    "limit": 100,
+    "reset": 1706270400,
+    "retryAfter": 45
+  }
+}
+```
+
+### Implementation Details
+
+- **Per-IP Limiting**: User endpoints limited by client IP address
+- **Per-Key Limiting**: Admin endpoints limited by API key
+- **Sliding Window**: Uses sliding window algorithm for accurate limiting
+- **Distributed Tracking**: Rate limit state managed via KV or Durable Objects
+- **Bypass Options**: Admin keys can have elevated limits (configurable)
+
+### Best Practices for Clients
+
+1. **Monitor Headers**: Check rate limit headers in responses
+2. **Implement Backoff**: Use exponential backoff when approaching limits
+3. **Cache Responses**: Cache callsign lookups to reduce API calls
+4. **Batch Operations**: Group related queries when possible
+5. **Respect Retry-After**: Honor the `Retry-After` header when rate limited
+
+## External Database Synchronization
+
+Phase 6 ([Issue #10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10)) introduces the capability to synchronize callsign data with external SQL databases and Redis caches.
+
+### Overview
+
+The slave synchronization engine enables distributed deployments where the Cloudflare Worker acts as the authoritative data source, propagating updates to one or more external storage systems.
+
+### Use Cases
+
+- **Read Replicas**: Distribute read load across multiple SQL databases
+- **Geographic Distribution**: Place data closer to regional users
+- **Legacy System Integration**: Sync with existing database infrastructure
+- **Analytics**: Separate analytical database for reporting
+- **Distributed Caching**: Redis caches in multiple regions
+
+### Architecture
+
+```
+Cloudflare Worker (Master)
+         │
+         ├─── Update Detection
+         │         │
+         │         ▼
+         │    Diff Calculation
+         │         │
+         │         ▼
+         ├─── D1 Database Update (Primary)
+         │         │
+         │         ▼
+         └─── Slave Synchronization Engine
+                   │
+                   ├──→ Slave SQL #1 (Region A)
+                   ├──→ Slave SQL #2 (Region B)
+                   ├──→ Redis Cache #1
+                   └──→ Redis Cache #2
+```
+
+### Configuration
+
+Slave endpoints are configured in the KV configuration store (Phase 3):
+
+```json
+{
+  "slaves": {
+    "sql": [
+      {
+        "id": "region-a-sql",
+        "type": "postgresql",
+        "endpoint": "postgres://host:5432/callsigns",
+        "credentials": "KV_SECRET_REF",
+        "enabled": true,
+        "priority": 1
+      },
+      {
+        "id": "region-b-sql",
+        "type": "mysql",
+        "endpoint": "mysql://host:3306/callsigns",
+        "credentials": "KV_SECRET_REF",
+        "enabled": true,
+        "priority": 2
+      }
+    ],
+    "redis": [
+      {
+        "id": "cache-a",
+        "endpoint": "redis://host:6379",
+        "credentials": "KV_SECRET_REF",
+        "ttl": 86400,
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+### Synchronization Process
+
+1. **Update Trigger**: After successful D1 database update
+2. **Load Configuration**: Retrieve active slave endpoints from KV
+3. **Parallel Propagation**: Send delta updates to all enabled slaves
+4. **Change Application**: Apply only modified records (minimal updates)
+5. **Health Tracking**: Record sync status and timing
+6. **Error Handling**: Log failures without blocking main workflow
+
+### Propagation Strategy
+
+**Differential Updates Only**:
+- Transmit only added, modified, or deleted records
+- Minimize network traffic and database operations
+- Include checksums for verification
+
+**Parallel Execution**:
+- Sync to all slaves simultaneously (non-blocking)
+- Independent failure handling for each slave
+- Continue on partial failures
+
+### Health Monitoring
+
+**Per-Slave Metrics**:
+- Last successful sync timestamp
+- Sync latency and duration
+- Error count and rate
+- Cumulative record count
+- Data freshness indicator
+
+**Admin Endpoints**:
+```bash
+# View slave synchronization status
+GET /admin/slaves/status
+
+# Force synchronization to specific slave
+POST /admin/slaves/{slave_id}/sync
+
+# Enable/disable slave
+POST /admin/slaves/{slave_id}/toggle
+```
+
+### Error Handling
+
+**Graceful Degradation**:
+- Main worker operation never blocked by slave failures
+- Errors logged to R2 with full context
+- Automatic retry with exponential backoff
+- Manual retry available via admin endpoint
+
+**Failure Scenarios**:
+- Network connectivity issues
+- Authentication failures
+- Slave database unavailable
+- Schema mismatches
+- Constraint violations
+
+### Canary Deployments
+
+Support for gradual rollout of new slaves:
+
+```json
+{
+  "canary": {
+    "enabled": true,
+    "percentage": 10,
+    "targetSlaves": ["new-slave-id"]
+  }
+}
+```
+
+- Test new slaves with limited traffic
+- Gradual increase in sync percentage
+- Easy rollback on issues
+- A/B testing of different configurations
+
+### Best Practices
+
+1. **Monitor Health**: Regularly check slave sync status
+2. **Capacity Planning**: Ensure slaves can handle update volume
+3. **Credential Rotation**: Regularly rotate slave credentials
+4. **Network Security**: Use encrypted connections (TLS/SSL)
+5. **Backup Strategy**: Maintain backups independent of sync
+6. **Testing**: Test slave configurations before enabling in production
+
+See [Issue #10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10) for complete specifications.
 
 ## Security
 
@@ -889,54 +1642,385 @@ Implementation details will be added in Phase 5.
 - CORS headers for API access control
 - Input validation on all endpoints
 - Secure headers in responses
+- API key authentication for admin endpoints (implemented)
+- Rate limiting to prevent abuse
 
-### Planned Security Enhancements
+### Authentication & Authorization
 
-- API key authentication for admin endpoints
-- JWT token support for future authentication
-- Rate limiting across all endpoints
-- Request validation and sanitization
-- SQL injection prevention
-- XSS protection
+#### API Key Authentication (Current)
+
+Admin endpoints require authentication via API key:
+
+```bash
+# Using X-API-Key header
+curl -H "X-API-Key: your-api-key" https://your-worker.workers.dev/admin/stats
+
+# Using Authorization Bearer token
+curl -H "Authorization: Bearer your-api-key" https://your-worker.workers.dev/admin/stats
+```
+
+**Setting Up Admin API Key**:
+```bash
+wrangler secret put ADMIN_API_KEY
+# Enter your secret API key when prompted
+```
+
+#### JWT Authentication (Planned - Phase 3+)
+
+JWT support is planned as a feature flag in the configuration system:
+- Token-based authentication for API consumers
+- Refresh token mechanism
+- Role-based access control (RBAC)
+- Token expiration and renewal
+
+### Data Security
+
+- **Hash Validation**: All data updates validated against cryptographic hashes
+- **Schema Validation**: Data structure verified before processing
+- **Integrity Checks**: Multi-stage validation before database updates
+- **Backup Strategy**: Automatic backups before any data modification
+- **Audit Trail**: Complete history of all data changes
+
+### Input Validation & Sanitization
+
+- Request parameter validation
+- SQL injection prevention (parameterized queries)
+- XSS protection in responses
+- Content-Type validation
+- Size limits on all inputs
+
+### Network Security
+
+- **TLS/HTTPS**: All traffic encrypted via Cloudflare's edge
+- **DDoS Protection**: Built-in Cloudflare DDoS mitigation
+- **Rate Limiting**: Multi-tier rate limiting (user and admin endpoints)
+- **CORS Configuration**: Controlled cross-origin access
+- **Security Headers**: 
+  - Content-Security-Policy
+  - X-Content-Type-Options
+  - X-Frame-Options
+  - Strict-Transport-Security
+
+### Secrets Management
+
+- **Environment Secrets**: Stored via Wrangler secrets (never in code)
+- **Configuration Encryption**: Sensitive config values encrypted at rest
+- **Key Rotation**: Support for periodic API key rotation
+- **Least Privilege**: Minimal permissions for all operations
+
+### Security Best Practices
+
+1. **No Secrets in Code**: All sensitive data in Wrangler secrets or KV
+2. **Input Validation**: Validate all inputs before processing
+3. **Error Handling**: Avoid exposing internal details in error messages
+4. **Logging**: Log security events without exposing sensitive data
+5. **Regular Audits**: Periodic security reviews and updates
 
 ## Monitoring
 
-### Health Checks
+### Current Health Checks
 
-The `/health` endpoint provides basic system status. Future enhancements will include:
+The `/health` endpoint provides basic system status with the following information:
+- Service status
+- API version
+- Environment identifier
+- Timestamp
 
-- Database connectivity checks
-- KV namespace availability
-- R2 bucket access verification
-- Response time metrics
+**Example Response**:
+```json
+{
+  "status": "ok",
+  "service": "ham-radio-callsign-worker",
+  "version": "0.1.0",
+  "environment": "production",
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
 
-### Metrics
+### Planned Monitoring Enhancements (Phase 7)
 
-Cloudflare Workers provides built-in metrics:
-- Request count
-- Error rate
-- CPU time
-- Bandwidth usage
+The monitoring infrastructure will be significantly enhanced in [Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8):
 
-Access these through the Cloudflare Dashboard.
+#### Component Health Checks
+
+- **Database Connectivity**: D1 database availability and response time
+- **KV Namespace Availability**: Configuration and cache store health
+- **R2 Bucket Access**: Export and log storage verification
+- **External Slaves** (Phase 6): SQL/Redis endpoint health status
+
+#### Metrics Collection
+
+**Automatic Metrics** (via Cloudflare Dashboard):
+- Request count and rate
+- Error rate and types
+- CPU time and execution duration
+- Memory usage
+- Bandwidth consumption
+- Geographic distribution
+
+**Custom Metrics** (via Admin Endpoints):
+- Database record count and growth
+- Cache hit/miss ratio
+- Update frequency and success rate
+- Average query response time
+- Slave synchronization lag
+- Data freshness indicators
+
+#### Admin Monitoring Endpoints
+
+1. **`GET /admin/stats`** - System Statistics
+   - Request volume and patterns
+   - Endpoint usage breakdown
+   - Rate limiting statistics
+   - Uptime and availability
+
+2. **`GET /admin/metadata`** - Database Metadata
+   - Current database version
+   - Record count and size
+   - Last update timestamp
+   - Cache statistics
+
+3. **`GET /admin/logs`** - Log Retrieval
+   - Filtered log access (by level, time, event type)
+   - Recent error summary
+   - Update event history
+
+#### Alerting & Notifications
+
+**Planned Features**:
+- Threshold-based alerts (error rate, response time, etc.)
+- Update failure notifications
+- Validation error alerts
+- Slave synchronization failure warnings
+- Storage quota alerts
+
+#### Observability
+
+- **Structured Logs**: JSONL format in R2 for analysis
+- **Event Tracking**: All significant operations logged
+- **Audit Trail**: Complete history of admin actions
+- **Performance Metrics**: Response times, execution duration
+- **Error Tracking**: Detailed error logs with context
+
+#### Monitoring Best Practices
+
+1. **Regular Health Checks**: Automated monitoring of `/health` endpoint
+2. **Log Review**: Periodic review of error and audit logs
+3. **Metrics Analysis**: Track trends in usage and performance
+4. **Capacity Planning**: Monitor growth and plan scaling
+5. **Incident Response**: Use logs and metrics for troubleshooting
 
 ## Performance Considerations
 
-- Leverage Cloudflare's global CDN for low-latency responses
-- Use KV for caching frequently accessed data
-- Optimize D1 queries with proper indexing
-- Implement efficient search algorithms
-- Monitor and optimize cold start times
+### Edge Computing Benefits
+
+- **Global Distribution**: Leverage Cloudflare's 300+ data centers worldwide
+- **Low Latency**: Serve requests from the nearest edge location
+- **Auto-Scaling**: Automatic scaling based on demand
+- **Zero Cold Starts**: V8 isolates provide instant response
+
+### Caching Strategy
+
+**Multi-Tier Caching**:
+1. **Edge Cache**: Cloudflare CDN caching for static responses
+2. **KV Cache**: Frequently accessed callsign data
+3. **D1 Database**: Primary data store with optimized queries
+4. **External Caches** (Phase 6): Optional Redis for distributed caching
+
+### Database Optimization
+
+- **Indexed Queries**: Proper indexing on D1 database tables
+- **Query Efficiency**: Optimized SQL queries for fast lookups
+- **Differential Updates**: Only update changed records to minimize write operations
+- **Batch Operations**: Bulk inserts/updates for efficiency
+
+### Data Transfer Optimization
+
+- **Compression**: Gzip/Brotli compression for API responses
+- **Minimal Payloads**: Return only requested data
+- **Pagination**: Large result sets paginated to reduce response size
+- **Efficient Formats**: JSON for APIs, CSV for exports
+
+### Search Algorithm Optimization
+
+- **Full-Text Search**: Efficient text search implementation
+- **Index Usage**: Leverage database indexes for fast lookups
+- **Result Limiting**: Cap result counts to prevent resource exhaustion
+- **Query Caching**: Cache common search queries
+
+### Monitoring and Optimization
+
+- **Response Time Tracking**: Monitor and optimize slow endpoints
+- **Resource Usage**: Track CPU and memory consumption
+- **Query Analysis**: Identify and optimize expensive queries
+- **Continuous Improvement**: Regular performance reviews and optimizations
+
+## Progressive Web App (PWA) Integration
+
+Phase 8 ([Issue #7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7)) includes comprehensive support for PWA integration:
+
+### API Design for PWAs
+
+The Ham Radio Callsign Worker API is designed with PWA requirements in mind:
+
+- **RESTful Design**: Standard HTTP methods and status codes
+- **CORS Support**: Cross-origin access for web applications
+- **JSON Responses**: Easy consumption by JavaScript applications
+- **Consistent Error Handling**: Predictable error responses
+- **Versioned API**: `/api/v1/` prefix for version management
+
+### PWA Integration Guide
+
+#### Basic Setup
+
+```javascript
+// Example: Fetching callsign data in a PWA
+async function lookupCallsign(callsign) {
+  try {
+    const response = await fetch(
+      `https://your-worker.workers.dev/api/v1/callsign/${callsign}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Callsign lookup failed:', error);
+    throw error;
+  }
+}
+```
+
+#### Offline Support
+
+PWAs can cache API responses for offline access:
+
+```javascript
+// Service Worker: Cache API responses
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.includes('/api/v1/callsign/')) {
+    event.respondWith(
+      caches.open('callsign-cache').then((cache) => {
+        return fetch(event.request)
+          .then((response) => {
+            cache.put(event.request, response.clone());
+            return response;
+          })
+          .catch(() => cache.match(event.request))
+      })
+    );
+  }
+});
+```
+
+#### Real-Time Updates
+
+PWAs can poll for updates or use webhooks (future enhancement):
+
+```javascript
+// Example: Check for data freshness
+async function checkForUpdates() {
+  const response = await fetch('https://your-worker.workers.dev/admin/metadata', {
+    headers: { 'X-API-Key': 'your-admin-key' }
+  });
+  
+  const metadata = await response.json();
+  const lastUpdate = new Date(metadata.data.database.lastUpdated);
+  
+  // Compare with local storage and refresh if needed
+  if (shouldRefresh(lastUpdate)) {
+    await refreshLocalData();
+  }
+}
+```
+
+#### Search Implementation
+
+```javascript
+// Example: Search functionality for PWA
+async function searchCallsigns(query) {
+  const response = await fetch(
+    `https://your-worker.workers.dev/api/v1/search?q=${encodeURIComponent(query)}`
+  );
+  
+  const data = await response.json();
+  return data.data.results;
+}
+```
+
+### PWA Best Practices
+
+1. **Cache Strategy**: Cache frequently accessed callsigns locally
+2. **Offline Mode**: Provide meaningful offline experience
+3. **Progressive Enhancement**: Core functionality works without advanced features
+4. **Background Sync**: Sync data updates in the background
+5. **Performance**: Minimize API calls with smart caching
+6. **Error Handling**: Graceful degradation on network failures
+
+### Sample PWA Features
+
+The project will provide examples for:
+- **Callsign Lookup Interface**: Search and display callsign information
+- **Offline Mode**: Access recently viewed callsigns offline
+- **Update Notifications**: Alert users to new data availability
+- **Export Functionality**: Download callsign data for offline use
+- **Location-Based Search**: Find callsigns by geographic area
+
+See [Issue #7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7) for complete PWA integration specifications and sample implementations.
 
 ## Roadmap
 
-1. **Phase 1** ✅: Project initialization and scaffolding
-2. **Phase 2** ✅: API endpoint implementation (Issue #1) - **COMPLETED**
-3. **Phase 3**: Data layer and storage setup
-4. **Phase 4**: Business logic implementation
-5. **Phase 5**: Security and rate limiting enhancements
-6. **Phase 6**: Testing and quality assurance
-7. **Phase 7**: Documentation and production deployment
+The development roadmap is organized into phases aligned with GitHub issues for tracking progress. Each phase builds upon previous work to create a robust, production-ready system.
+
+### Development Phases
+
+| Phase | Status | Description | Related Issue |
+|-------|--------|-------------|---------------|
+| **Phase 1** | ✅ Complete | Project initialization and scaffolding | - |
+| **Phase 2** | ✅ Complete | API endpoint implementation | [#1](https://github.com/cjemorton/ham-radio-callsign-worker/issues/1) |
+| **Phase 3** | 📋 Planned | Configuration and infrastructure setup | [#5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5) |
+| **Phase 4** | 📋 Planned | Data fetch, extraction, and validation engine | [#12](https://github.com/cjemorton/ham-radio-callsign-worker/issues/12) |
+| **Phase 5** | 📋 Planned | Data diffing, patching, and recovery | [#11](https://github.com/cjemorton/ham-radio-callsign-worker/issues/11) |
+| **Phase 6** | 📋 Planned | Slave synchronization and external cache layer | [#10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10) |
+| **Phase 7** | 📋 Planned | Logging, audit, and monitoring infrastructure | [#8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8) |
+| **Phase 8** | 📋 Planned | Testing, E2E verification, and PWA integration | [#7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7) |
+
+### Tracking Progress
+
+- **GitHub Issues**: Each phase corresponds to one or more GitHub issues for detailed tracking
+- **Project Board**: View the [project board](https://github.com/cjemorton/ham-radio-callsign-worker/projects) for current status and priorities
+- **Milestones**: Major phases are organized into milestones for release planning
+
+### Current Focus
+
+**Phase 3** is the next priority, establishing the configuration management system that will enable all subsequent data operations. See [Issue #5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5) for details.
+
+### Development Workflow
+
+This project follows a modular development approach as outlined in [Issue #4](https://github.com/cjemorton/ham-radio-callsign-worker/issues/4):
+
+1. **Issue Creation**: Each major feature/phase has a corresponding GitHub issue
+2. **Modular Development**: Features are developed independently with clear interfaces
+3. **Progressive Enhancement**: Each phase builds upon previous work without breaking existing functionality
+4. **Documentation-First**: README and code documentation are updated with each phase
+5. **Testing Integration**: Tests are added incrementally as features are developed
+6. **Review & Refinement**: Regular reviews ensure alignment with architectural vision
+
+### Issue Reference Guide
+
+| Issue # | Title | Phase | Status |
+|---------|-------|-------|--------|
+| [#1](https://github.com/cjemorton/ham-radio-callsign-worker/issues/1) | API Endpoint Implementation | 2 | ✅ Complete |
+| [#4](https://github.com/cjemorton/ham-radio-callsign-worker/issues/4) | Architecture Overview & Development Plan | Documentation | ✅ Complete |
+| [#5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5) | KV Configuration and Management | 3 | 📋 Planned |
+| [#7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7) | Testing & PWA Integration | 8 | 📋 Planned |
+| [#8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8) | Logging, Audit, and Monitoring | 7 | 📋 Planned |
+| [#10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10) | Slave SQL/Redis Sync Engine | 6 | 📋 Planned |
+| [#11](https://github.com/cjemorton/ham-radio-callsign-worker/issues/11) | Data Diffing & Recovery | 5 | 📋 Planned |
+| [#12](https://github.com/cjemorton/ham-radio-callsign-worker/issues/12) | Fetch, Extraction & Validation | 4 | 📋 Planned |
 
 ## Contributing
 
