@@ -111,6 +111,11 @@ export function getQueryParams(url: URL): Record<string, string> {
 
 /**
  * Validate callsign format (basic validation)
+ * Note: This is a basic validator. It doesn't handle all edge cases like:
+ * - Portable suffixes (/P, /M, /MM, etc.)
+ * - Special event callsigns
+ * - Complex international prefixes
+ * For production use, consider a more comprehensive validation library.
  */
 export function isValidCallsign(callsign: string): boolean {
 	// Basic regex for ham radio callsigns

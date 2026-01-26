@@ -64,7 +64,7 @@ export class Router {
 	/**
 	 * Handle incoming requests
 	 */
-	async handle(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	async handle(request: Request, env: Env, ctx: ExecutionContext): Promise<Response | null> {
 		const url = new URL(request.url);
 		const method = request.method;
 
@@ -93,7 +93,7 @@ export class Router {
 			}
 		}
 
-		// No route matched
-		return null as unknown as Response;
+		// No route matched - return null to let caller handle 404
+		return null;
 	}
 }

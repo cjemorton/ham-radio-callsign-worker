@@ -204,7 +204,7 @@ describe('Ham Radio Callsign Worker', () => {
 				const response = await worker.fetch(request, env, {} as ExecutionContext);
 
 				expect(response.status).toBe(200);
-				const data = await response.json();
+				const data = (await response.json()) as { success: boolean; data: { logs: unknown[] } };
 				expect(data.success).toBe(true);
 				expect(data.data).toHaveProperty('logs');
 			});
@@ -216,7 +216,7 @@ describe('Ham Radio Callsign Worker', () => {
 				const response = await worker.fetch(request, env, {} as ExecutionContext);
 
 				expect(response.status).toBe(200);
-				const data = await response.json();
+				const data = (await response.json()) as { data: { limit: number } };
 				expect(data.data.limit).toBe(2);
 			});
 		});
@@ -240,7 +240,7 @@ describe('Ham Radio Callsign Worker', () => {
 				const response = await worker.fetch(request, env, {} as ExecutionContext);
 
 				expect(response.status).toBe(200);
-				const data = await response.json();
+				const data = (await response.json()) as { success: boolean; data: { requests: unknown } };
 				expect(data.success).toBe(true);
 				expect(data.data).toHaveProperty('requests');
 			});

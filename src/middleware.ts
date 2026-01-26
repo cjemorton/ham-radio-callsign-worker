@@ -7,7 +7,16 @@ import { errorResponse, getClientIp, extractApiKey, log } from './utils';
 
 /**
  * Rate limiter using in-memory Map (for development)
- * In production, use KV or Durable Objects for distributed rate limiting
+ * 
+ * WARNING: This is a simple in-memory implementation suitable for development
+ * and single-instance deployments. For production with distributed Workers,
+ * use KV storage or Durable Objects for consistent rate limiting across
+ * all edge locations.
+ * 
+ * Example KV-based implementation:
+ * - Store rate limit data in KV with expiration
+ * - Key format: `rate_limit:{client_ip}:{timestamp}`
+ * - Use atomic operations to prevent race conditions
  */
 class RateLimiter {
 	private requests: Map<string, { count: number; resetTime: number }> = new Map();
@@ -119,7 +128,7 @@ export function withAuth(handler: RouteHandler): RouteHandler {
 		}
 
 		if (apiKey !== validApiKey) {
-			log('warn', 'Invalid API key', { apiKey: apiKey.substring(0, 8) + '...' });
+			log('warn', 'Invalid API key', { keyLength: apiKey.length });
 			return errorResponse(
 				'Unauthorized',
 				'Invalid API key provided.',
