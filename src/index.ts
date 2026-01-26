@@ -1,105 +1,104 @@
 /**
  * Ham Radio Callsign Worker - Entry Point
- * 
+ *
  * This Cloudflare Worker provides API endpoints for ham radio callsign lookups,
  * database management, and administrative functions.
  */
 
-export interface Env {
-	// KV Namespace bindings
-	// CALLSIGN_CACHE?: KVNamespace;
-	// METADATA_STORE?: KVNamespace;
-	
-	// D1 Database binding
-	// CALLSIGN_DB?: D1Database;
-	
-	// R2 Bucket binding
-	// DATA_EXPORTS?: R2Bucket;
-	
-	// Environment variables
-	ENVIRONMENT?: string;
-	LOG_LEVEL?: string;
+import type { Env } from './types';
+import { Router } from './router';
+import { withRateLimit, withAuth, withLogging, withErrorHandling, compose } from './middleware';
+import { jsonResponse, errorResponse } from './utils';
+import * as userHandlers from './handlers/user';
+import * as adminHandlers from './handlers/admin';
+
+// Export types for external use
+export type { Env } from './types';
+
+/**
+ * Initialize the router with all endpoints
+ */
+function createRouter(): Router {
+	const router = new Router();
+
+	// Health check endpoint (no rate limiting for monitoring)
+	router.get('/', async (_request: Request, env: Env) => {
+		return jsonResponse({
+			status: 'ok',
+			service: 'ham-radio-callsign-worker',
+			version: '0.1.0',
+			environment: env.ENVIRONMENT || 'development',
+			timestamp: new Date().toISOString(),
+		});
+	});
+
+	router.get('/health', async (_request: Request, env: Env) => {
+		return jsonResponse({
+			status: 'ok',
+			service: 'ham-radio-callsign-worker',
+			version: '0.1.0',
+			environment: env.ENVIRONMENT || 'development',
+			timestamp: new Date().toISOString(),
+		});
+	});
+
+	// Version endpoint
+	router.get('/version', async () => {
+		return jsonResponse({
+			version: '0.1.0',
+			api_version: 'v1',
+			timestamp: new Date().toISOString(),
+		});
+	});
+
+	// User API endpoints (with rate limiting: 100 requests per minute)
+	const userMiddleware = compose(
+		withErrorHandling,
+		withLogging,
+		(handler) => withRateLimit(handler, 100, 60000)
+	);
+
+	router.get('/api/v1/callsign/:callsign', userMiddleware(userHandlers.getCallsign));
+	router.get('/api/v1/search', userMiddleware(userHandlers.searchCallsigns));
+	router.get('/api/v1/export', userMiddleware(userHandlers.exportDatabase));
+
+	// Admin API endpoints (with authentication and stricter rate limiting: 20 requests per minute)
+	const adminMiddleware = compose(
+		withErrorHandling,
+		withLogging,
+		(handler) => withRateLimit(handler, 20, 60000),
+		withAuth
+	);
+
+	router.post('/admin/update', adminMiddleware(adminHandlers.forceUpdate));
+	router.post('/admin/rebuild', adminMiddleware(adminHandlers.rebuildDatabase));
+	router.post('/admin/rollback', adminMiddleware(adminHandlers.rollbackDatabase));
+	router.get('/admin/logs', adminMiddleware(adminHandlers.getLogs));
+	router.get('/admin/metadata', adminMiddleware(adminHandlers.getMetadata));
+	router.get('/admin/stats', adminMiddleware(adminHandlers.getStats));
+
+	return router;
 }
 
+/**
+ * Main worker entry point
+ */
 export default {
-	async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-		const url = new URL(request.url);
-		const path = url.pathname;
+	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const router = createRouter();
+		const response = await router.handle(request, env, ctx);
 
-		// Health check endpoint
-		if (path === '/health' || path === '/') {
-			return new Response(JSON.stringify({
-				status: 'ok',
-				service: 'ham-radio-callsign-worker',
-				version: '0.1.0',
-				environment: env.ENVIRONMENT || 'development',
-				timestamp: new Date().toISOString()
-			}), {
-				status: 200,
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*'
-				}
-			});
+		// If no route matched, return 404
+		if (!response) {
+			const url = new URL(request.url);
+			return errorResponse(
+				'Not Found',
+				'The requested resource was not found',
+				404,
+				{ path: url.pathname }
+			);
 		}
 
-		// Version endpoint
-		if (path === '/version') {
-			return new Response(JSON.stringify({
-				version: '0.1.0',
-				api_version: 'v1',
-				// Build date is set at runtime; consider using static build timestamp in production
-				timestamp: new Date().toISOString()
-			}), {
-				status: 200,
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*'
-				}
-			});
-		}
-
-		// API endpoints placeholder
-		if (path.startsWith('/api/v1/')) {
-			return new Response(JSON.stringify({
-				error: 'API endpoints not yet implemented',
-				message: 'This endpoint will be available in a future release',
-				requested_path: path
-			}), {
-				status: 501,
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*'
-				}
-			});
-		}
-
-		// Admin endpoints placeholder
-		if (path.startsWith('/admin/')) {
-			return new Response(JSON.stringify({
-				error: 'Admin endpoints not yet implemented',
-				message: 'Administrative functions will be available in a future release',
-				requested_path: path
-			}), {
-				status: 501,
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*'
-				}
-			});
-		}
-
-		// 404 for unknown routes
-		return new Response(JSON.stringify({
-			error: 'Not Found',
-			message: 'The requested resource was not found',
-			path: path
-		}), {
-			status: 404,
-			headers: {
-				'Content-Type': 'application/json',
-				'Access-Control-Allow-Origin': '*'
-			}
-		});
-	}
+		return response;
+	},
 };
