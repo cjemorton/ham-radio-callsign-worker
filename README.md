@@ -13,8 +13,19 @@ A Cloudflare Worker service for ham radio callsign lookups, database management,
 - [Development](#development)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [Logging](#logging)
+- [Data Update Workflow](#data-update-workflow)
+- [Security](#security)
+- [Monitoring](#monitoring)
+- [Performance Considerations](#performance-considerations)
+- [Progressive Web App (PWA) Integration](#progressive-web-app-pwa-integration)
+- [Rate Limiting](#rate-limiting)
+- [External Database Synchronization](#external-database-synchronization)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
+- [Support](#support)
+- [Acknowledgments](#acknowledgments)
 
 ## Project Background
 
@@ -2057,4 +2068,4 @@ For issues, questions, or contributions, please:
 
 ---
 
-**Status**: 🚧 Active Development | **Version**: 0.1.0 | **Last Updated**: 2024-01-26
+**Status**: 🚧 Active Development | **Version**: 0.1.0 | **Last Updated**: 2026-01-26
