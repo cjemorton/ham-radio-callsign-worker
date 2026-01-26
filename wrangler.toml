@@ -1,0 +1,57 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "ham-radio-callsign-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Worker configuration
+workers_dev = true
+
+# Environment variables (use secrets for sensitive data: `wrangler secret put KEY`)
+[vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "info"
+
+# KV Namespace bindings for caching and metadata
+# Uncomment and configure when ready to use
+# [[kv_namespaces]]
+# binding = "CALLSIGN_CACHE"
+# id = "your_kv_namespace_id"
+# preview_id = "your_preview_kv_namespace_id"
+
+# [[kv_namespaces]]
+# binding = "METADATA_STORE"
+# id = "your_metadata_kv_namespace_id"
+# preview_id = "your_preview_metadata_kv_namespace_id"
+
+# D1 Database binding for callsign data storage
+# Uncomment and configure when ready to use
+# [[d1_databases]]
+# binding = "CALLSIGN_DB"
+# database_name = "ham-radio-callsigns"
+# database_id = "your_d1_database_id"
+# preview_database_id = "your_preview_d1_database_id"
+
+# R2 Bucket binding for data exports and backups
+# Uncomment and configure when ready to use
+# [[r2_buckets]]
+# binding = "DATA_EXPORTS"
+# bucket_name = "callsign-exports"
+# preview_bucket_name = "callsign-exports-preview"
+
+# Rate limiting (configure through Cloudflare dashboard or API)
+# Note: Rate limiting can be implemented via Durable Objects or custom logic
+
+# [env.production]
+# name = "ham-radio-callsign-worker-production"
+# workers_dev = false
+# route = "callsign.example.com/*"
+# [env.production.vars]
+# ENVIRONMENT = "production"
+# LOG_LEVEL = "warn"
+
+# [env.staging]
+# name = "ham-radio-callsign-worker-staging"
+# [env.staging.vars]
+# ENVIRONMENT = "staging"
+# LOG_LEVEL = "debug"
