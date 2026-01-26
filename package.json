@@ -1,0 +1,35 @@
+{
+  "name": "ham-radio-callsign-worker",
+  "version": "0.1.0",
+  "description": "Cloudflare Worker for ham radio callsign lookups and database management",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "cf-typegen": "wrangler types",
+    "build": "tsc --noEmit",
+    "lint": "eslint src/ --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
+  },
+  "keywords": [
+    "ham-radio",
+    "callsign",
+    "cloudflare-worker",
+    "amateur-radio"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.0",
+    "wrangler": "^3.81.0"
+  },
+  "dependencies": {}
+}
