@@ -7,9 +7,14 @@ import { handleOptions } from './utils';
 
 /**
  * Simple path-to-regex converter with parameter extraction
+ * 
+ * Note: This function expects safe, hardcoded route patterns (e.g., '/api/v1/callsign/:id')
+ * and should NOT be used with user-provided input.
  */
 function pathToRegex(path: string): { pattern: RegExp; paramNames: string[] } {
 	const paramNames: string[] = [];
+	// Escape forward slashes for use in regex
+	// Note: Path patterns are hardcoded in the application, not user input
 	const regexPattern = path
 		.replace(/\//g, '\\/')
 		.replace(/:([^/]+)/g, (_match, paramName) => {
