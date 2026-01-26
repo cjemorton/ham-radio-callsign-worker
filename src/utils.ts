@@ -132,5 +132,6 @@ export function log(level: string, message: string, details?: unknown): void {
 	if (details) {
 		logEntry.details = details;
 	}
+	// eslint-disable-next-line no-console
 	console.log(JSON.stringify(logEntry));
 }

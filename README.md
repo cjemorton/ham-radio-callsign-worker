@@ -111,41 +111,41 @@ The system is built on Cloudflare's serverless platform with the following archi
 - [x] Add meta files (.gitignore, LICENSE, CONTRIBUTING.md)
 - [x] Basic health and version endpoints
 
-### Phase 2: API and Endpoint Layer (Issue #1)
+### Phase 2: API and Endpoint Layer ✅ (Completed)
 
 Based on [Issue #1](https://github.com/cjemorton/ham-radio-callsign-worker/issues/1):
 
 #### User Endpoints (Public API)
 
 - **Query Endpoints**
-  - `GET /api/v1/callsign/:callsign` - Look up specific callsign
-  - `GET /api/v1/search?q={query}` - Search callsigns by various fields
-  - `GET /api/v1/query?field={value}` - Query by specific field
+  - `GET /api/v1/callsign/:callsign` - Look up specific callsign ✅
+  - `GET /api/v1/search?q={query}` - Search callsigns by various fields ✅
+  - `GET /api/v1/export?format={format}` - Database export functionality ✅
   
 - **Utility Endpoints**
-  - `GET /health` - System health check ✅ (Implemented)
-  - `GET /version` - API version information ✅ (Implemented)
-  - `GET /api/v1/export` - Database export functionality
+  - `GET /health` - System health check ✅
+  - `GET /version` - API version information ✅
 
 #### Admin Endpoints (Authenticated)
 
 - **Database Management**
-  - `POST /admin/update` - Force database update
-  - `POST /admin/rebuild` - Full database rebuild
-  - `POST /admin/rollback` - Rollback to previous version
+  - `POST /admin/update` - Force database update ✅
+  - `POST /admin/rebuild` - Full database rebuild ✅
+  - `POST /admin/rollback` - Rollback to previous version ✅
   
 - **Monitoring**
-  - `GET /admin/logs` - View system logs
-  - `GET /admin/metadata` - View database metadata
-  - `GET /admin/stats` - System statistics
+  - `GET /admin/logs` - View system logs ✅
+  - `GET /admin/metadata` - View database metadata ✅
+  - `GET /admin/stats` - System statistics ✅
 
 #### Cross-Cutting Concerns
 
-- **Authentication**: API key-based for admin endpoints (JWT support flagged for future)
-- **Rate Limiting**: Applied to all endpoints to prevent abuse
-- **CORS**: Configurable cross-origin resource sharing
-- **Error Handling**: Consistent error response format
-- **Logging**: Structured logging for all requests
+- **Authentication**: API key-based for admin endpoints (JWT support flagged for future) ✅
+- **Rate Limiting**: Applied to all endpoints (100/min user, 20/min admin) ✅
+- **CORS**: Configurable cross-origin resource sharing ✅
+- **Error Handling**: Consistent error response format ✅
+- **Logging**: Structured logging for all requests ✅
+- **Documentation**: Comprehensive API documentation with examples ✅
 
 ### Phase 3: Data Layer & Storage
 
@@ -219,14 +219,66 @@ The worker will be available at `http://localhost:8787`
 
 ## API Endpoints
 
-### Current Endpoints
+### Overview
 
-#### Health Check
-```
-GET /health
+The Ham Radio Callsign Worker provides a RESTful API with two main categories of endpoints:
+
+1. **User Endpoints** (`/api/v1/*`): Public-facing endpoints for callsign lookups and searches
+2. **Admin Endpoints** (`/admin/*`): Administrative functions requiring API key authentication
+
+All endpoints return JSON responses and include CORS headers for cross-origin access.
+
+### Authentication
+
+#### User Endpoints
+User endpoints are publicly accessible but rate-limited to prevent abuse.
+
+#### Admin Endpoints
+Admin endpoints require authentication via API key. Provide your API key in one of two ways:
+
+**Option 1: X-API-Key Header**
+```bash
+curl -H "X-API-Key: your-api-key-here" https://your-worker.workers.dev/admin/stats
 ```
 
-Returns the current health status of the service.
+**Option 2: Authorization Bearer Token**
+```bash
+curl -H "Authorization: Bearer your-api-key-here" https://your-worker.workers.dev/admin/stats
+```
+
+**Setting Up Admin API Key**
+
+The admin API key must be configured as a secret in your Cloudflare Worker:
+
+```bash
+wrangler secret put ADMIN_API_KEY
+# Enter your secret API key when prompted
+```
+
+### Rate Limiting
+
+All endpoints are rate-limited to ensure fair usage:
+
+- **User Endpoints**: 100 requests per minute per IP address
+- **Admin Endpoints**: 20 requests per minute per API key
+
+Rate limit information is included in response headers:
+- `X-RateLimit-Limit`: Maximum number of requests allowed
+- `X-RateLimit-Remaining`: Number of requests remaining in the current window
+- `X-RateLimit-Reset`: Timestamp when the rate limit resets
+
+When rate limited, you'll receive a `429 Too Many Requests` response with details about when you can retry.
+
+### User Endpoints
+
+#### GET /health
+
+Health check endpoint for monitoring service availability.
+
+**Request:**
+```bash
+curl https://your-worker.workers.dev/health
+```
 
 **Response:**
 ```json
@@ -234,30 +286,463 @@ Returns the current health status of the service.
   "status": "ok",
   "service": "ham-radio-callsign-worker",
   "version": "0.1.0",
-  "environment": "development",
-  "timestamp": "2024-01-26T12:00:00.000Z"
+  "environment": "production",
+  "timestamp": "2026-01-26T12:00:00.000Z"
 }
 ```
 
-#### Version Information
-```
-GET /version
-```
+**Status Codes:**
+- `200 OK`: Service is healthy
 
-Returns version information about the API.
+---
+
+#### GET /version
+
+Returns API version information.
+
+**Request:**
+```bash
+curl https://your-worker.workers.dev/version
+```
 
 **Response:**
 ```json
 {
   "version": "0.1.0",
   "api_version": "v1",
-  "build_date": "2024-01-26T12:00:00.000Z"
+  "timestamp": "2026-01-26T12:00:00.000Z"
 }
 ```
 
-### Planned Endpoints
+**Status Codes:**
+- `200 OK`: Success
 
-See [High-Level Design & Requirements](#high-level-design--requirements) for the complete list of planned endpoints.
+---
+
+#### GET /api/v1/callsign/:callsign
+
+Look up information for a specific amateur radio callsign.
+
+**Request:**
+```bash
+curl https://your-worker.workers.dev/api/v1/callsign/K1ABC
+```
+
+**Path Parameters:**
+- `callsign` (required): The amateur radio callsign to look up (e.g., K1ABC, W2XYZ)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "callsign": "K1ABC",
+    "name": "John Doe",
+    "license_class": "Extra",
+    "state": "CA",
+    "country": "USA",
+    "grid_square": "CM97"
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Callsign found
+- `400 Bad Request`: Invalid callsign format
+- `404 Not Found`: Callsign not found
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Database not available
+
+**Example Error Response:**
+```json
+{
+  "error": "Bad Request",
+  "message": "Invalid callsign format",
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+---
+
+#### GET /api/v1/search
+
+Search for callsigns using various criteria.
+
+**Request:**
+```bash
+curl "https://your-worker.workers.dev/api/v1/search?q=smith"
+```
+
+**Query Parameters:**
+- `q` (required): Search query (searches across callsign, name, city, state, etc.)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "query": "smith",
+    "count": 2,
+    "results": [
+      {
+        "callsign": "K1ABC",
+        "name": "Alice Smith",
+        "license_class": "General",
+        "state": "MA"
+      },
+      {
+        "callsign": "W2XYZ",
+        "name": "Bob Smith",
+        "license_class": "Extra",
+        "state": "NY"
+      }
+    ]
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Search successful
+- `400 Bad Request`: Missing or invalid query parameter
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Database not available
+
+---
+
+#### GET /api/v1/export
+
+Export the callsign database in various formats.
+
+**Request:**
+```bash
+curl "https://your-worker.workers.dev/api/v1/export?format=json"
+```
+
+**Query Parameters:**
+- `format` (optional): Export format - `json` or `csv` (default: `json`)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Export functionality will generate a downloadable file",
+    "format": "json",
+    "status": "pending",
+    "note": "This is a placeholder. Full implementation requires R2 bucket configuration."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Export initiated
+- `400 Bad Request`: Invalid format
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Export storage not available
+
+---
+
+### Admin Endpoints
+
+All admin endpoints require authentication via API key.
+
+#### POST /admin/update
+
+Force an immediate database update from the data source.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/update
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Database update initiated",
+    "status": "pending",
+    "timestamp": "2026-01-26T12:00:00.000Z",
+    "note": "This is a placeholder. Full implementation requires database update logic."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Update initiated
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Database not available
+
+---
+
+#### POST /admin/rebuild
+
+Perform a full database rebuild from scratch.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/rebuild
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Database rebuild initiated",
+    "status": "pending",
+    "timestamp": "2026-01-26T12:00:00.000Z",
+    "note": "This is a placeholder. Full implementation requires database rebuild logic."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Rebuild initiated
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Database not available
+
+---
+
+#### POST /admin/rollback
+
+Rollback the database to a previous version.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "1.2.3"}' \
+  https://your-worker.workers.dev/admin/rollback
+```
+
+**Request Body (optional):**
+```json
+{
+  "version": "1.2.3"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Database rollback initiated",
+    "targetVersion": "1.2.3",
+    "status": "pending",
+    "timestamp": "2026-01-26T12:00:00.000Z",
+    "note": "This is a placeholder. Full implementation requires database versioning logic."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Rollback initiated
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Database not available
+
+---
+
+#### GET /admin/logs
+
+View system logs with optional filtering.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  "https://your-worker.workers.dev/admin/logs?limit=50&level=error"
+```
+
+**Query Parameters:**
+- `limit` (optional): Maximum number of log entries to return (default: 100)
+- `level` (optional): Filter by log level - `debug`, `info`, `warn`, `error`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "count": 3,
+    "limit": 100,
+    "logs": [
+      {
+        "timestamp": "2026-01-26T12:00:00.000Z",
+        "level": "info",
+        "message": "Service started",
+        "details": {
+          "version": "0.1.0"
+        }
+      },
+      {
+        "timestamp": "2026-01-26T11:59:00.000Z",
+        "level": "info",
+        "message": "Health check passed"
+      },
+      {
+        "timestamp": "2026-01-26T11:58:00.000Z",
+        "level": "warn",
+        "message": "Rate limit warning",
+        "details": {
+          "clientIp": "192.168.1.1"
+        }
+      }
+    ],
+    "note": "This is placeholder data. Full implementation requires log storage."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Logs retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### GET /admin/metadata
+
+View database metadata and statistics.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/metadata
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "database": {
+      "version": "1.0.0",
+      "recordCount": 1000000,
+      "lastUpdated": "2026-01-25T12:00:00.000Z",
+      "size": "250MB"
+    },
+    "cache": {
+      "hitRate": 0.85,
+      "entryCount": 50000
+    },
+    "note": "This is placeholder data. Full implementation requires metadata storage."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Metadata retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: Metadata store not available
+
+---
+
+#### GET /admin/stats
+
+View comprehensive system statistics.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/stats
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "requests": {
+      "total": 150000,
+      "last24h": 5000,
+      "avgResponseTime": 45
+    },
+    "endpoints": {
+      "/api/v1/callsign": 120000,
+      "/api/v1/search": 25000,
+      "/api/v1/export": 500,
+      "/health": 4500
+    },
+    "rateLimit": {
+      "blocked": 250,
+      "allowed": 149750
+    },
+    "uptime": "15d 6h 32m",
+    "note": "This is placeholder data. Full implementation requires analytics storage."
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Statistics retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+### Response Format
+
+All API responses follow a consistent format:
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "data": { ... },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": "Error Type",
+  "message": "Human-readable error message",
+  "timestamp": "2026-01-26T12:00:00.000Z",
+  "details": { ... }
+}
+```
+
+### CORS Support
+
+All endpoints include CORS headers to allow cross-origin requests:
+- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Key`
+
+To handle preflight requests, send an `OPTIONS` request to any endpoint.
+
+### Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200 OK` | Request successful |
+| `400 Bad Request` | Invalid request parameters |
+| `401 Unauthorized` | Missing or invalid authentication |
+| `404 Not Found` | Resource not found |
+| `429 Too Many Requests` | Rate limit exceeded |
+| `500 Internal Server Error` | Unexpected server error |
+| `503 Service Unavailable` | Service temporarily unavailable |
+
+---
 
 ## Configuration
 
@@ -446,10 +931,10 @@ Access these through the Cloudflare Dashboard.
 ## Roadmap
 
 1. **Phase 1** ✅: Project initialization and scaffolding
-2. **Phase 2** 🔄: API endpoint implementation (Issue #1)
+2. **Phase 2** ✅: API endpoint implementation (Issue #1) - **COMPLETED**
 3. **Phase 3**: Data layer and storage setup
 4. **Phase 4**: Business logic implementation
-5. **Phase 5**: Security and rate limiting
+5. **Phase 5**: Security and rate limiting enhancements
 6. **Phase 6**: Testing and quality assurance
 7. **Phase 7**: Documentation and production deployment
 
