@@ -48,7 +48,8 @@ export default {
 			return new Response(JSON.stringify({
 				version: '0.1.0',
 				api_version: 'v1',
-				build_date: new Date().toISOString()
+				// Build date is set at runtime; consider using static build timestamp in production
+				timestamp: new Date().toISOString()
 			}), {
 				status: 200,
 				headers: {
