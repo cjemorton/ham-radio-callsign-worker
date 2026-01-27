@@ -175,7 +175,17 @@ echo
 log_info "Checking wrangler.toml for secrets..."
 if [ -f wrangler.toml ]; then
     # Check for patterns that might be secrets in vars section
-    if grep -A 10 '^\[vars\]' wrangler.toml | grep -E -i "(api[_-]?key|password|token|secret).*=.*[a-zA-Z0-9_\-]{20,}" | grep -v -E '(ENVIRONMENT|LOG_LEVEL)'; then
+    # Step 1: Extract vars section (10 lines after [vars])
+    VARS_SECTION=$(grep -A 10 '^\[vars\]' wrangler.toml)
+    
+    # Step 2: Look for suspicious patterns (api_key, password, token, secret)
+    SUSPICIOUS=$(echo "$VARS_SECTION" | grep -E -i "(api[_-]?key|password|token|secret).*=.*[a-zA-Z0-9_\-]{20,}")
+    
+    # Step 3: Exclude known safe variables (ENVIRONMENT, LOG_LEVEL)
+    POTENTIAL_SECRETS=$(echo "$SUSPICIOUS" | grep -v -E '(ENVIRONMENT|LOG_LEVEL)' || true)
+    
+    if [ -n "$POTENTIAL_SECRETS" ]; then
+        echo "$POTENTIAL_SECRETS"
         log_error "wrangler.toml may contain secrets in [vars] section"
     else
         log_success "wrangler.toml [vars] section looks safe"

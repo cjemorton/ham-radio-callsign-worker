@@ -102,7 +102,11 @@ ADMIN_API_KEY=$DEV_API_KEY
 EOF
     
     log_success "Created .dev.vars with generated API key"
-    log_warning "API Key: $DEV_API_KEY"
+    
+    # Show only partial key for security (first 8 and last 8 characters)
+    MASKED_KEY="${DEV_API_KEY:0:8}...${DEV_API_KEY: -8}"
+    log_warning "API Key (partial): $MASKED_KEY"
+    log_info "Full key saved to .dev.vars - check the file if needed"
     log_info "Store this key securely if you need to share it with your team"
     echo
     log_info "To start development server: npm run dev"

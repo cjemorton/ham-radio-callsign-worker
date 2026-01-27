@@ -156,13 +156,15 @@ if [ ! -f .dev.vars ]; then
 else
     log_info "Testing environment variable injection..."
     
-    # Source the .dev.vars to test
+    # Check the API key configuration without exposing the value
     if [ -f .dev.vars ]; then
-        # Read the API key length without exposing it
-        API_KEY=$(grep "^ADMIN_API_KEY=" .dev.vars | cut -d= -f2)
-        if [ -n "$API_KEY" ]; then
-            KEY_LENGTH=${#API_KEY}
-            log_success "ADMIN_API_KEY is configured (length: $KEY_LENGTH)"
+        # Get key length without storing the actual secret
+        KEY_LENGTH=$(grep "^ADMIN_API_KEY=" .dev.vars | cut -d= -f2 | wc -c)
+        # Subtract 1 for newline added by wc
+        KEY_LENGTH=$((KEY_LENGTH - 1))
+        
+        if [ $KEY_LENGTH -gt 0 ]; then
+            log_success "ADMIN_API_KEY is configured (length: $KEY_LENGTH characters)"
             
             if [ $KEY_LENGTH -ge 32 ]; then
                 log_success "API key length is strong (32+ characters)"
