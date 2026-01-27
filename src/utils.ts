@@ -5,6 +5,11 @@
 import type { ErrorResponse, SuccessResponse } from './types';
 
 /**
+ * Constants
+ */
+export const HASH_DISPLAY_LENGTH = 16;
+
+/**
  * Create a JSON response with CORS headers
  */
 export function jsonResponse<T>(

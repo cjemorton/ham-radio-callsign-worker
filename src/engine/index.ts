@@ -2,7 +2,7 @@
  * Main orchestrator for fetch, extract, and validate workflow
  */
 
-import type { Env, FallbackMetadata } from '../types';
+import type { Env, FallbackMetadata, ValidationResult } from '../types';
 import { log } from '../utils';
 import { loadConfig } from '../config';
 import {
@@ -128,9 +128,10 @@ export async function executeDataPipeline(
 		}
 
 		// Step 6: Validate data
+		let validationResult: ValidationResult | undefined;
 		if (!options.skipValidation) {
 			log('info', 'Validating extracted data');
-			const validationResult = await validateData(
+			validationResult = await validateData(
 				env,
 				extractResult.content,
 				config.data
@@ -190,7 +191,10 @@ export async function executeDataPipeline(
 		// Step 7: Success - store as new last good data
 		const hash = await calculateHash(extractResult.content);
 		const version = new Date().toISOString().replace(/[:.]/g, '-');
-		const recordCount = extractResult.content.split('\n').filter(l => l.trim()).length - 1; // Subtract header
+		
+		// Use record count from validation if available, otherwise calculate
+		const recordCount = validationResult?.metadata.recordCount ?? 
+			extractResult.content.split('\n').filter(l => l.trim()).length - 1;
 
 		const fallbackMetadata: FallbackMetadata = {
 			version,

@@ -3,7 +3,7 @@
  */
 
 import type { Env, LogEntry } from '../types';
-import { successResponse, errorResponse, log } from '../utils';
+import { successResponse, errorResponse, log, HASH_DISPLAY_LENGTH } from '../utils';
 import { executeDataPipeline } from '../engine';
 
 /**
@@ -44,7 +44,7 @@ export async function forceUpdate(
 				? {
 					version: result.data.version,
 					recordCount: result.data.recordCount,
-					hash: result.data.hash.substring(0, 16) + '...',
+					hash: result.data.hash.substring(0, HASH_DISPLAY_LENGTH) + '...',
 				}
 				: undefined,
 		});
@@ -320,7 +320,7 @@ export async function triggerFetch(
 				? {
 					version: result.data.version,
 					recordCount: result.data.recordCount,
-					hash: result.data.hash.substring(0, 16) + '...',
+					hash: result.data.hash.substring(0, HASH_DISPLAY_LENGTH) + '...',
 				}
 				: undefined,
 		});

@@ -113,11 +113,15 @@ class SimpleZipExtractor {
 				// Stored (no compression)
 				return fileData;
 			} else if (compressionMethod === 8) {
-				// Deflate compression - would need to decompress
-				log('warn', 'Deflate compression detected, attempting to return compressed data');
-				// For a full implementation, use a library like fflate to decompress
-				// For now, return the compressed data and let the caller handle it
-				return fileData;
+				// Deflate compression detected
+				// NOTE: This implementation does not support deflate decompression.
+				// For production use with compressed files, consider adding a decompression library
+				// such as pako or fflate to properly decompress deflate-compressed data.
+				// Returning null as compressed data cannot be used without decompression.
+				log('error', 'Deflate compression not supported - decompression library required', {
+					compressionMethod,
+				});
+				return null;
 			} else {
 				log('error', 'Unsupported compression method', { compressionMethod });
 				return null;

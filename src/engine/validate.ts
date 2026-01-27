@@ -3,7 +3,7 @@
  */
 
 import type { Env, ValidationResult, ConfigData } from '../types';
-import { log } from '../utils';
+import { log, HASH_DISPLAY_LENGTH } from '../utils';
 import { logValidationEvent } from './logger';
 
 /**
@@ -36,8 +36,8 @@ export async function validateHashIntegrity(
 
 	log('info', 'Hash integrity check', {
 		valid,
-		actualHash: actualHash.substring(0, 16) + '...',
-		expectedHash: expectedHash.substring(0, 16) + '...',
+		actualHash: actualHash.substring(0, HASH_DISPLAY_LENGTH) + '...',
+		expectedHash: expectedHash.substring(0, HASH_DISPLAY_LENGTH) + '...',
 	});
 
 	return { valid, actualHash, expectedHash };
