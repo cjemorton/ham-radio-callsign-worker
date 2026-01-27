@@ -2,7 +2,7 @@
  * Configuration API endpoints
  */
 
-import type { Env } from '../types';
+import type { Env, ConfigData } from '../types';
 import { successResponse, errorResponse, log } from '../utils';
 import {
 	loadConfig,

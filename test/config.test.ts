@@ -30,7 +30,7 @@ describe('Configuration Module', () => {
 				const keys = Array.from(mockKV.keys())
 					.filter((k) => !options?.prefix || k.startsWith(options.prefix))
 					.map((name) => ({ name }));
-				return { keys, list_complete: true, curosr: '' };
+				return { keys, list_complete: true, cursor: '' };
 			},
 		} as unknown as KVNamespace;
 
