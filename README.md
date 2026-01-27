@@ -969,17 +969,25 @@ curl -X POST \
 
 #### GET /admin/logs
 
-View system logs with optional filtering.
+Legacy endpoint that redirects to `/admin/logs/events`. Use the new endpoints below for better functionality.
+
+---
+
+#### GET /admin/logs/events
+
+View event logs from R2 storage with filtering options.
 
 **Request:**
 ```bash
 curl -H "X-API-Key: your-api-key" \
-  "https://your-worker.workers.dev/admin/logs?limit=50&level=error"
+  "https://your-worker.workers.dev/admin/logs/events?limit=50&date=2024-01-15&type=error"
 ```
 
 **Query Parameters:**
-- `limit` (optional): Maximum number of log entries to return (default: 100)
-- `level` (optional): Filter by log level - `debug`, `info`, `warn`, `error`
+- `limit` (optional, default: 100, max: 1000): Maximum number of log entries to return
+- `date` (optional, format: YYYY-MM-DD): Specific date to retrieve logs for (default: today)
+- `level` (optional): Filter by log level
+- `type` (optional): Filter by event type (`fetch`, `extract`, `validate`, `fallback`, `error`)
 
 **Response:**
 ```json
@@ -987,40 +995,261 @@ curl -H "X-API-Key: your-api-key" \
   "success": true,
   "data": {
     "count": 3,
-    "limit": 100,
+    "total": 15,
+    "limit": 50,
+    "date": "2024-01-15",
     "logs": [
       {
-        "timestamp": "2026-01-26T12:00:00.000Z",
-        "level": "info",
-        "message": "Service started",
+        "eventId": "1705319040000-fgh567",
+        "timestamp": "2024-01-15T10:40:00.000Z",
+        "type": "error",
+        "status": "failure",
         "details": {
-          "version": "0.1.0"
-        }
-      },
-      {
-        "timestamp": "2026-01-26T11:59:00.000Z",
-        "level": "info",
-        "message": "Health check passed"
-      },
-      {
-        "timestamp": "2026-01-26T11:58:00.000Z",
-        "level": "warn",
-        "message": "Rate limit warning",
-        "details": {
-          "clientIp": "192.168.1.1"
+          "message": "Error in database update",
+          "error": "Connection timeout",
+          "stackTrace": "..."
         }
       }
     ],
-    "note": "This is placeholder data. Full implementation requires log storage."
+    "metadata": {
+      "logFile": "logs-2024-01-15.jsonl",
+      "size": 1024000,
+      "lastModified": "2024-01-15T23:59:00.000Z"
+    }
   },
-  "timestamp": "2026-01-26T12:00:00.000Z"
+  "timestamp": "2024-01-15T12:00:00.000Z"
 }
 ```
 
 **Status Codes:**
-- `200 OK`: Logs retrieved
+- `200 OK`: Logs retrieved successfully
 - `401 Unauthorized`: Missing or invalid API key
 - `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: R2 bucket not configured
+
+---
+
+#### GET /admin/logs/files
+
+List available log files in R2 storage.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  "https://your-worker.workers.dev/admin/logs/files?limit=30"
+```
+
+**Query Parameters:**
+- `limit` (optional, default: 100, max: 1000): Maximum number of files to return
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "count": 15,
+    "truncated": false,
+    "files": [
+      {
+        "name": "logs-2024-01-15.jsonl",
+        "path": "events/logs-2024-01-15.jsonl",
+        "size": 1024000,
+        "uploaded": "2024-01-15T23:59:00.000Z",
+        "etag": "abc123def456"
+      }
+    ]
+  },
+  "timestamp": "2024-01-15T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: File list retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: R2 bucket not configured
+
+---
+
+#### GET /admin/logs/stats
+
+Get aggregate statistics about log files.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  "https://your-worker.workers.dev/admin/logs/stats"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalFiles": 30,
+    "totalSize": 52428800,
+    "oldestLog": "2023-12-16",
+    "newestLog": "2024-01-15",
+    "filesByDate": {
+      "2023-12-16": 1,
+      "2024-01-15": 1
+    }
+  },
+  "timestamp": "2024-01-15T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Statistics retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `503 Service Unavailable`: R2 bucket not configured
+
+---
+
+#### POST /admin/logs/rotate
+
+Manually trigger log rotation and cleanup.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"retentionDays": 30, "performArchive": true, "archiveDays": 7}' \
+  "https://your-worker.workers.dev/admin/logs/rotate"
+```
+
+**Request Body (optional):**
+```json
+{
+  "retentionDays": 30,
+  "archiveDays": 7,
+  "performArchive": true
+}
+```
+
+- `retentionDays` (optional, default: 30): Number of days to keep logs before deletion
+- `archiveDays` (optional, default: 7): Number of days before archiving logs
+- `performArchive` (optional, default: false): Whether to archive old logs before deletion
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Log rotation completed",
+    "retentionDays": 30,
+    "expiredFilesFound": 5,
+    "deleted": 5,
+    "archived": 3,
+    "errors": []
+  },
+  "timestamp": "2024-01-15T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Rotation completed
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `500 Internal Server Error`: Rotation failed
+- `503 Service Unavailable`: R2 bucket not configured
+
+---
+
+#### GET /admin/status
+
+Get comprehensive system status and health monitoring.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  "https://your-worker.workers.dev/admin/status"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "timestamp": "2024-01-15T12:00:00.000Z",
+    "services": {
+      "database": true
+    },
+    "database": {
+      "available": true,
+      "version": "v1.2.3",
+      "recordCount": 50000,
+      "lastUpdated": "2024-01-15T10:00:00.000Z"
+    },
+    "storage": {
+      "r2Available": true,
+      "kvAvailable": true
+    },
+    "logs": {
+      "eventsLogged": true,
+      "lastLogFile": "logs-2024-01-15.jsonl"
+    }
+  },
+  "timestamp": "2024-01-15T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Status retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### GET /admin/diffs
+
+View historical diff reports showing changes between data updates.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  "https://your-worker.workers.dev/admin/diffs?limit=10"
+```
+
+**Query Parameters:**
+- `limit` (optional, default: 10, max: 100): Maximum number of diff reports to return
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "count": 3,
+    "limit": 10,
+    "diffs": [
+      {
+        "hasChanges": true,
+        "summary": {
+          "addedCount": 50,
+          "modifiedCount": 100,
+          "deletedCount": 25,
+          "unchangedCount": 49825
+        },
+        "metadata": {
+          "newVersion": "v1.2.3",
+          "timestamp": "2024-01-15T10:00:00.000Z"
+        }
+      }
+    ]
+  },
+  "timestamp": "2024-01-15T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Diff history retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `500 Internal Server Error`: Failed to retrieve diffs
+- `503 Service Unavailable`: R2 bucket not configured
 
 ---
 
@@ -1818,9 +2047,17 @@ wrangler deploy --env production
 
 ## Logging
 
-The worker uses structured logging with configurable log levels. The logging infrastructure will be significantly enhanced in Phase 7 ([Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8)).
+The worker implements a comprehensive structured logging system with event tracking, audit trails, and monitoring capabilities. For detailed information, see [LOGGING.md](./LOGGING.md).
 
-### Current Logging
+### Overview
+
+**Key Features**:
+- ✅ **Structured JSONL Logs**: All events logged in JSON Lines format for easy parsing
+- ✅ **R2 Storage**: Logs stored in Cloudflare R2 buckets for durability
+- ✅ **Daily Rotation**: Automatic daily log file rotation
+- ✅ **Event Categories**: Fetch, extract, validate, fallback, and error events
+- ✅ **Retention Management**: Configurable retention with automatic cleanup
+- ✅ **Admin API**: RESTful endpoints for log inspection and management
 
 **Log Levels**:
 - `debug`: Detailed debugging information
@@ -1830,45 +2067,139 @@ The worker uses structured logging with configurable log levels. The logging inf
 
 Log level is configured via the `LOG_LEVEL` environment variable in `wrangler.toml`.
 
-### Planned Logging Infrastructure (Phase 7)
+### Log Structure
 
-The comprehensive logging system will include:
+Logs are stored in R2 with daily rotation in JSONL (JSON Lines) format:
 
-#### Structured JSONL Logs
+```
+R2 Bucket (DATA_EXPORTS)
+├── events/
+│   ├── logs-2024-01-15.jsonl      # Daily event logs
+│   ├── logs-2024-01-16.jsonl
+│   └── archive/                    # Archived logs
+│       └── logs-2023-12-01.jsonl
+├── diffs/                          # Diff reports
+│   └── diff-v1.2.3-2024-01-15T10-30-00.json
+└── metadata/                       # System metadata
+    └── status.json
+```
 
-- **Format**: JSON Lines (JSONL) for easy parsing and analysis
-- **Storage**: R2 bucket with automatic rotation
-- **Levels**: Event-level and error-level categorization
-- **Content**:
-  - Request/response metadata
-  - Data update events
-  - Configuration changes
-  - Admin actions
-  - Error stack traces
-  - Performance metrics
+Each log entry includes:
+- **Event ID**: Unique identifier for tracking
+- **Timestamp**: ISO 8601 format
+- **Type**: Event category (fetch, extract, validate, fallback, error)
+- **Status**: Success, failure, or warning
+- **Details**: Event-specific information including duration, size, errors, etc.
 
-#### Log Categories
+### Logging Endpoints
 
-1. **Event Logs**: Normal operations (queries, updates, sync events)
-2. **Error Logs**: Failures, exceptions, and validation errors
-3. **Audit Logs**: Admin actions, configuration changes, rollbacks
-4. **Diff Reports**: Detailed reports of data changes during updates
-5. **Version History**: Complete version trail with timestamps
+#### View Event Logs
+`GET /admin/logs/events?limit=100&date=2024-01-15&type=error`
 
-#### Log Management
+Retrieve and filter event logs from R2 storage.
 
-- **Rotation**: Automatic rotation to manage storage costs
-- **Retention**: Configurable retention periods
-- **Retrieval**: Admin endpoints for log inspection
-- **Search**: Query logs by timestamp, level, or event type
+**Query Parameters**:
+- `limit`: Maximum entries (default: 100)
+- `date`: Specific date (YYYY-MM-DD, default: today)
+- `level`: Filter by log level
+- `type`: Filter by event type
 
-#### Monitoring Endpoints
+#### List Log Files
+`GET /admin/logs/files?limit=30`
 
-- `GET /admin/logs?limit=100&level=error` - Retrieve filtered logs
-- `GET /admin/metadata` - View database and system metadata
-- `GET /admin/stats` - System statistics and metrics
+List all available log files with metadata.
 
-See [Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8) for complete specifications.
+#### Log Statistics
+`GET /admin/logs/stats`
+
+Get aggregate statistics about log files (total files, size, date range).
+
+#### Manual Log Rotation
+`POST /admin/logs/rotate`
+
+Trigger manual log rotation and cleanup.
+
+**Request Body** (optional):
+```json
+{
+  "retentionDays": 30,
+  "archiveDays": 7,
+  "performArchive": true
+}
+```
+
+### Monitoring Endpoints
+
+#### System Status
+`GET /admin/status`
+
+Comprehensive system health check including:
+- Service availability
+- Database status and version
+- Storage (R2/KV) availability
+- Recent logging activity
+
+#### Metadata
+`GET /admin/metadata`
+
+View database metadata including version, record count, and last update.
+
+#### Statistics
+`GET /admin/stats`
+
+System statistics and performance metrics.
+
+#### Diff History
+`GET /admin/diffs?limit=10`
+
+View historical diff reports showing data changes between updates.
+
+### Log Rotation
+
+**Automatic Rotation**: Logs rotate daily. Each day creates a new file: `logs-YYYY-MM-DD.jsonl`
+
+**Manual Rotation**: Use `POST /admin/logs/rotate` to:
+- Clean up logs older than retention period (default: 30 days)
+- Archive old logs before deletion
+- Get statistics on deleted/archived files
+
+**Retention Policy**:
+- Default: 30 days
+- Configurable via API
+- Logs can be archived before deletion for long-term storage
+
+### Error Handling and Recovery
+
+The logging system tracks all errors and provides recovery mechanisms:
+
+1. **Error Detection**: All errors logged with full context and stack traces
+2. **Fallback Logging**: Automatic fallback events when validation fails
+3. **Recovery**: View error logs, trigger manual updates, or rollback to previous version
+
+**Recovery Workflow**:
+```bash
+# 1. Check recent errors
+GET /admin/logs/events?type=error&limit=20
+
+# 2. View system status
+GET /admin/status
+
+# 3. Trigger manual update if needed
+POST /admin/fetch
+
+# 4. Rollback if necessary
+POST /admin/rollback
+```
+
+### Best Practices
+
+1. **Regular Monitoring**: Check `/admin/status` daily
+2. **Error Review**: Review error logs weekly
+3. **Log Retention**: Keep at least 30 days of logs
+4. **Rotation Schedule**: Run rotation weekly or monthly
+5. **Alerting**: Set up alerts for status changes and error patterns
+
+For complete documentation, examples, and troubleshooting, see [LOGGING.md](./LOGGING.md).
 
 ## Data Update Workflow
 
