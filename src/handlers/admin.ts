@@ -2,7 +2,7 @@
  * Admin API endpoints (authentication required)
  */
 
-import type { Env, LogEntry } from '../types';
+import type { Env } from '../types';
 import { successResponse, errorResponse, log, HASH_DISPLAY_LENGTH } from '../utils';
 import { executeDataPipeline } from '../engine';
 import {
@@ -10,6 +10,12 @@ import {
 	getLatestSnapshot,
 	getDatabaseRecordCount,
 } from '../engine/database';
+import {
+	getLogStatistics,
+	deleteExpiredLogs,
+	archiveOldLogs,
+	getExpiredLogFiles,
+} from '../engine/log-rotation';
 
 /**
  * POST /admin/update
@@ -167,51 +173,169 @@ export async function rollbackDatabase(
 
 /**
  * GET /admin/logs
- * View system logs
+ * View system logs (legacy endpoint - redirects to /admin/logs/events)
  */
 export async function getLogs(
 	request: Request,
-	_env: Env,
+	env: Env,
+	ctx: ExecutionContext
+): Promise<Response> {
+	// Redirect to the new event logs endpoint
+	return getEventLogs(request, env, ctx);
+}
+
+/**
+ * GET /admin/logs/events
+ * View event logs from R2 storage
+ */
+export async function getEventLogs(
+	request: Request,
+	env: Env,
 	_ctx: ExecutionContext
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-	const level = url.searchParams.get('level');
+	const date = url.searchParams.get('date'); // Format: YYYY-MM-DD
+	const level = url.searchParams.get('level'); // Filter by log level
+	const type = url.searchParams.get('type'); // Filter by event type
 
-	log('info', 'Logs requested', { limit, level });
+	log('info', 'Event logs requested', { limit, date, level, type });
 
-	// TODO: Implement actual log retrieval from KV or other storage
-	// For now, return mock data
-	const mockLogs: LogEntry[] = [
-		{
-			timestamp: new Date().toISOString(),
-			level: 'info',
-			message: 'Service started',
-			details: { version: '0.1.0' },
-		},
-		{
-			timestamp: new Date(Date.now() - 60000).toISOString(),
-			level: 'info',
-			message: 'Health check passed',
-		},
-		{
-			timestamp: new Date(Date.now() - 120000).toISOString(),
-			level: 'warn',
-			message: 'Rate limit warning',
-			details: { clientIp: '192.168.1.1' },
-		},
-	];
+	if (!env.DATA_EXPORTS) {
+		return errorResponse(
+			'Service Unavailable',
+			'R2 bucket is not configured.',
+			503
+		);
+	}
 
-	const filteredLogs = level
-		? mockLogs.filter((log) => log.level === level)
-		: mockLogs;
+	try {
+		// Determine which log file to read
+		const logFileName = date
+			? `logs-${date}.jsonl`
+			: `logs-${new Date().toISOString().split('T')[0]}.jsonl`;
+		const logPath = `events/${logFileName}`;
 
-	return successResponse({
-		count: filteredLogs.length,
-		limit,
-		logs: filteredLogs.slice(0, limit),
-		note: 'This is placeholder data. Full implementation requires log storage.',
-	});
+		// Read log file from R2
+		const logFile = await env.DATA_EXPORTS.get(logPath);
+		if (!logFile) {
+			return successResponse({
+				count: 0,
+				limit,
+				date: date || new Date().toISOString().split('T')[0],
+				logs: [],
+				message: `No log file found for ${logFileName}`,
+			});
+		}
+
+		// Parse JSONL content
+		const content = await logFile.text();
+		const lines = content.split('\n').filter((line) => line.trim());
+		let logs = lines.map((line) => JSON.parse(line));
+
+		// Apply filters
+		if (level) {
+			logs = logs.filter((log) => log.details?.level === level);
+		}
+		if (type) {
+			logs = logs.filter((log) => log.type === type);
+		}
+
+		// Sort by timestamp descending (most recent first)
+		logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+		// Apply limit
+		const limitedLogs = logs.slice(0, Math.min(limit, 1000));
+
+		return successResponse({
+			count: limitedLogs.length,
+			total: logs.length,
+			limit,
+			date: date || new Date().toISOString().split('T')[0],
+			logs: limitedLogs,
+			metadata: {
+				logFile: logFileName,
+				size: content.length,
+				lastModified: logFile.uploaded?.toISOString(),
+			},
+		});
+	} catch (error) {
+		log('error', 'Failed to retrieve event logs', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to retrieve event logs from R2',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
+}
+
+/**
+ * GET /admin/logs/files
+ * List available log files in R2
+ */
+export async function getLogFiles(
+	request: Request,
+	env: Env,
+	_ctx: ExecutionContext
+): Promise<Response> {
+	log('info', 'Log files list requested');
+
+	if (!env.DATA_EXPORTS) {
+		return errorResponse(
+			'Service Unavailable',
+			'R2 bucket is not configured.',
+			503
+		);
+	}
+
+	try {
+		const url = new URL(request.url);
+		const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+
+		// List log files from R2
+		const listed = await env.DATA_EXPORTS.list({
+			prefix: 'events/',
+			limit: Math.min(limit, 1000),
+		});
+
+		const logFiles = listed.objects.map((obj) => ({
+			name: obj.key.replace('events/', ''),
+			path: obj.key,
+			size: obj.size,
+			uploaded: obj.uploaded?.toISOString(),
+			etag: obj.etag,
+		}));
+
+		// Sort by date descending
+		logFiles.sort((a, b) => {
+			const dateA = a.uploaded ? new Date(a.uploaded).getTime() : 0;
+			const dateB = b.uploaded ? new Date(b.uploaded).getTime() : 0;
+			return dateB - dateA;
+		});
+
+		return successResponse({
+			count: logFiles.length,
+			truncated: listed.truncated,
+			files: logFiles,
+		});
+	} catch (error) {
+		log('error', 'Failed to list log files', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to list log files from R2',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
 }
 
 /**
@@ -446,6 +570,213 @@ export async function getDiffHistory(
 		return errorResponse(
 			'Internal Server Error',
 			'Failed to retrieve diff history',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
+}
+
+/**
+ * GET /admin/status
+ * System status and health monitoring
+ */
+export async function getStatus(
+	_request: Request,
+	env: Env,
+	_ctx: ExecutionContext
+): Promise<Response> {
+	log('info', 'System status requested');
+
+	try {
+		// Check service availability
+		const status: {
+			status: 'healthy' | 'degraded' | 'unavailable';
+			timestamp: string;
+			services: Record<string, boolean | string>;
+			database?: {
+				available: boolean;
+				version?: string;
+				recordCount?: number;
+				lastUpdated?: string;
+			};
+			storage?: {
+				r2Available: boolean;
+				kvAvailable: boolean;
+			};
+			logs?: {
+				eventsLogged: boolean;
+				lastLogFile?: string;
+			};
+		} = {
+			status: 'healthy',
+			timestamp: new Date().toISOString(),
+			services: {},
+			storage: {
+				r2Available: !!env.DATA_EXPORTS,
+				kvAvailable: !!(env.METADATA_STORE || env.CONFIG_KV || env.CALLSIGN_CACHE),
+			},
+		};
+
+		// Check D1 database
+		if (env.CALLSIGN_DB) {
+			try {
+				const snapshot = await getLatestSnapshot(env);
+				const recordCount = await getDatabaseRecordCount(env);
+				status.database = {
+					available: true,
+					version: snapshot?.version || 'unknown',
+					recordCount,
+					lastUpdated: snapshot?.timestamp || 'unknown',
+				};
+				status.services.database = true;
+			} catch (error) {
+				status.database = { available: false };
+				status.services.database = `Error: ${error instanceof Error ? error.message : String(error)}`;
+				status.status = 'degraded';
+			}
+		} else {
+			status.database = { available: false };
+			status.services.database = false;
+		}
+
+		// Check if logging is operational
+		if (env.DATA_EXPORTS) {
+			try {
+				const logFileName = `logs-${new Date().toISOString().split('T')[0]}.jsonl`;
+				const logPath = `events/${logFileName}`;
+				const logFile = await env.DATA_EXPORTS.get(logPath);
+				status.logs = {
+					eventsLogged: !!logFile,
+					lastLogFile: logFile ? logFileName : undefined,
+				};
+			} catch (error) {
+				status.logs = { eventsLogged: false };
+			}
+		}
+
+		return successResponse(status);
+	} catch (error) {
+		log('error', 'Failed to get system status', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to retrieve system status',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
+}
+
+/**
+ * GET /admin/logs/stats
+ * Get log file statistics
+ */
+export async function getLogStats(
+	_request: Request,
+	env: Env,
+	_ctx: ExecutionContext
+): Promise<Response> {
+	log('info', 'Log statistics requested');
+
+	if (!env.DATA_EXPORTS) {
+		return errorResponse(
+			'Service Unavailable',
+			'R2 bucket is not configured.',
+			503
+		);
+	}
+
+	try {
+		const stats = await getLogStatistics(env);
+		return successResponse(stats);
+	} catch (error) {
+		log('error', 'Failed to get log statistics', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to retrieve log statistics',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
+}
+
+/**
+ * POST /admin/logs/rotate
+ * Manually trigger log rotation and cleanup
+ */
+export async function rotateAndCleanupLogs(
+	request: Request,
+	env: Env,
+	_ctx: ExecutionContext
+): Promise<Response> {
+	log('info', 'Log rotation triggered');
+
+	if (!env.DATA_EXPORTS) {
+		return errorResponse(
+			'Service Unavailable',
+			'R2 bucket is not configured.',
+			503
+		);
+	}
+
+	try {
+		// Parse request body for configuration
+		let retentionDays = 30;
+		let archiveDays = 7;
+		let performArchive = false;
+
+		try {
+			const contentType = request.headers.get('Content-Type');
+			if (contentType?.includes('application/json')) {
+				const body = (await request.json()) as {
+					retentionDays?: number;
+					archiveDays?: number;
+					performArchive?: boolean;
+				};
+				retentionDays = body.retentionDays || retentionDays;
+				archiveDays = body.archiveDays || archiveDays;
+				performArchive = body.performArchive || false;
+			}
+		} catch (error) {
+			// Ignore JSON parse errors, use defaults
+		}
+
+		// Get expired files first
+		const expiredFiles = await getExpiredLogFiles(env, { retentionDays });
+
+		// Perform archive if requested
+		let archiveResult: { archived: number; errors: string[] } = { archived: 0, errors: [] };
+		if (performArchive) {
+			archiveResult = await archiveOldLogs(env, archiveDays);
+		}
+
+		// Delete expired logs
+		const deleteResult = await deleteExpiredLogs(env, { retentionDays });
+
+		return successResponse({
+			message: 'Log rotation completed',
+			retentionDays,
+			expiredFilesFound: expiredFiles.length,
+			deleted: deleteResult.deleted,
+			archived: archiveResult.archived,
+			errors: [...deleteResult.errors, ...archiveResult.errors],
+		});
+	} catch (error) {
+		log('error', 'Failed to rotate logs', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to rotate logs',
 			500,
 			{
 				error: error instanceof Error ? error.message : String(error),

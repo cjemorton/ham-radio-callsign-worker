@@ -80,8 +80,13 @@ function createRouter(): Router {
 	router.post('/admin/rebuild', adminMiddleware(adminHandlers.rebuildDatabase));
 	router.post('/admin/rollback', adminMiddleware(adminHandlers.rollbackDatabase));
 	router.get('/admin/logs', adminMiddleware(adminHandlers.getLogs));
+	router.get('/admin/logs/events', adminMiddleware(adminHandlers.getEventLogs));
+	router.get('/admin/logs/files', adminMiddleware(adminHandlers.getLogFiles));
+	router.get('/admin/logs/stats', adminMiddleware(adminHandlers.getLogStats));
+	router.post('/admin/logs/rotate', adminMiddleware(adminHandlers.rotateAndCleanupLogs));
 	router.get('/admin/metadata', adminMiddleware(adminHandlers.getMetadata));
 	router.get('/admin/stats', adminMiddleware(adminHandlers.getStats));
+	router.get('/admin/status', adminMiddleware(adminHandlers.getStatus));
 	router.get('/admin/diffs', adminMiddleware(adminHandlers.getDiffHistory));
 
 	// Admin configuration endpoints
