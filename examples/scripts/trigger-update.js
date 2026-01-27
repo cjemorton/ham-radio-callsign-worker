@@ -23,7 +23,7 @@ async function triggerUpdate() {
     const response = await fetch(`${WORKER_URL}/api/v1/admin/update`, {
       method: 'POST',
       headers: {
-        'X-Admin-Key': ADMIN_API_KEY,
+        'Authorization': `Bearer ${ADMIN_API_KEY}`,
         'Content-Type': 'application/json'
       }
     });
