@@ -3,19 +3,13 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { Env, ConfigData, DiffResult } from '../src/types';
+import type { ConfigData, DiffResult } from '../src/types';
 import { createPatchOperations } from '../src/engine/database';
 
 describe('Database Engine', () => {
-	let env: Env;
 	let config: ConfigData;
 
 	beforeEach(() => {
-		env = {
-			ENVIRONMENT: 'test',
-			LOG_LEVEL: 'info',
-		};
-
 		config = {
 			dataSource: {
 				originZipUrl: 'https://example.com/data.zip',

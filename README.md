@@ -211,11 +211,13 @@ This project follows a phased development approach as outlined in [Issue #4](htt
   - `POST /admin/update` - Force database update ✅
   - `POST /admin/rebuild` - Full database rebuild ✅
   - `POST /admin/rollback` - Rollback to previous version ✅
+  - `POST /admin/fetch` - Trigger on-demand fetch/extract/validate ✅
   
 - **Monitoring**
   - `GET /admin/logs` - View system logs ✅
   - `GET /admin/metadata` - View database metadata ✅
   - `GET /admin/stats` - System statistics ✅
+  - `GET /admin/diffs` - View diff history ✅
 
 #### Cross-Cutting Concerns
 
@@ -1870,7 +1872,7 @@ See [Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8) 
 
 ## Data Update Workflow
 
-The worker implements a sophisticated data update workflow with the core fetch, extraction, and validation engine now fully implemented (Phase 4).
+The worker implements a sophisticated data update workflow with fetch, extraction, validation, and differential patching engines fully implemented.
 
 ### Update Trigger Mechanisms
 
@@ -1909,11 +1911,7 @@ The worker implements a sophisticated data update workflow with the core fetch, 
    - Log extraction and validation events to R2
          ↓
 6. Validation Decision Point
-   ├─ [PASS] → Store as Last Good Data
-   │           - Save content to R2
-   │           - Update fallback metadata in KV
-   │           - Update last fetch timestamp
-   │           - Return success
+   ├─ [PASS] → Continue to Diff Calculation
    │
    └─ [FAIL] → Fallback Logic (✅ IMPLEMENTED)
                - Attempt to retrieve last good data from R2
@@ -1921,27 +1919,45 @@ The worker implements a sophisticated data update workflow with the core fetch, 
                - If unavailable: Return error
                - Log fallback event to R2
          ↓
-7. Database Patching (Phase 5 - Issue #11 - PLANNED)
-   - Apply only changed records to D1
-   - Transactional update
-   - Differential analysis
+7. Diff Calculation (✅ IMPLEMENTED)
+   - Compare new data with last known good data
+   - Identify added, modified, and deleted records
+   - Calculate record-level changes by primary key (callsign)
+   - Detect hash changes for quick comparison
+   - Store diff report in R2 with metadata
          ↓
-8. Slave Synchronization (Phase 6 - Issue #10 - PLANNED)
+8. Database Patching (✅ IMPLEMENTED)
+   - Create patch operations (INSERT, UPDATE, DELETE)
+   - Initialize D1 database tables if needed
+   - Apply patches in batches (100 records per batch)
+   - Use D1 transactions for atomic updates
+   - Create database snapshot for rollback
+   - Skip patching if no changes detected
+         ↓
+9. Store as Last Good Data (✅ IMPLEMENTED)
+   - Save content to R2 with version metadata
+   - Update fallback metadata in KV
+   - Store database snapshot reference
+   - Update last fetch timestamp
+         ↓
+10. Slave Synchronization (Phase 6 - Issue #10 - PLANNED)
    - Propagate changes to external SQL/Redis
    - Parallel sync to all configured slaves
          ↓
-9. Event Logging and Metadata (✅ IMPLEMENTED)
+11. Event Logging and Metadata (✅ IMPLEMENTED)
    - Store event logs in R2 (JSONL format with daily rotation)
    - Store processing metadata per version
-   - Store diffs and validation results
+   - Store diff reports with change summaries
+   - Store validation results
    - Track fallback status
          ↓
-10. Success Response or Error
+12. Success Response or Error
     - Return detailed status with metadata
+    - Include diff summary (added/modified/deleted counts)
     - Include warnings if fallback was used
 ```
 
-### Implemented Features (Phase 4)
+### Implemented Features
 
 #### ✅ Fetch Engine (`src/engine/fetch.ts`)
 - Fetches ZIP files from KV-configured origin URLs
@@ -1971,6 +1987,25 @@ The worker implements a sophisticated data update workflow with the core fetch, 
 - Retrieves and uses fallback data when needed
 - Admin operations to check/clear fallback status
 
+#### ✅ Diff Engine (`src/engine/diff.ts`)
+- Compares new data with previous version by hash
+- Record-level diffing by primary key (callsign)
+- Identifies added, modified, and deleted records
+- Optimized hash-based quick comparison
+- Stores diff reports in R2 with metadata
+- Supports configurable delimiters and schemas
+- Handles first import (null old content)
+
+#### ✅ Database Patching Engine (`src/engine/database.ts`)
+- Initializes D1 database tables on demand
+- Creates patch operations (INSERT, UPDATE, DELETE)
+- Batch processing for efficient D1 operations (100 records per batch)
+- Transactional updates using D1 batch API
+- Database snapshot creation for rollback
+- Record count tracking
+- Rollback to previous snapshot capability
+- Version-based snapshot management
+
 #### ✅ R2 Logging Engine (`src/engine/logger.ts`)
 - JSONL event log format
 - Daily log rotation (logs-YYYY-MM-DD.jsonl)
@@ -1987,10 +2022,19 @@ The worker implements a sophisticated data update workflow with the core fetch, 
 /metadata/
   processing-{version}.json     # Processing metadata per version
 /diffs/
-  diff-{version}-{timestamp}.json  # Data differentials (planned)
+  diff-{version}.json           # ✅ Data differentials with change summaries
 /fallback/
   last-good-data-{version}.txt  # Last known good data for rollback
 ```
+
+### Diffing and Patching
+
+- **✅ Hash-Based Comparison**: Quick detection of changes via SHA-256 hash
+- **✅ Record-Level Diffing**: Identifies added, modified, and deleted records by primary key
+- **✅ Differential Updates**: Only changed records sent to D1 database
+- **✅ Batch Processing**: Efficient batch operations (100 records per batch)
+- **✅ Transaction Support**: Atomic updates using D1 batch API
+- **✅ Diff Reports**: Detailed change reports stored in R2 with metadata
 
 ### Validation and Fallback
 
@@ -1998,7 +2042,49 @@ The worker implements a sophisticated data update workflow with the core fetch, 
 - **✅ Schema Validation**: Headers and structure verified before processing
 - **✅ Content Validation**: Delimiter, field count, and structure checks
 - **✅ Automatic Fallback**: On validation failure, uses last known good data
-- **Manual Rollback**: Admin endpoint to revert to specific version (planned)
+- **✅ Manual Rollback**: Admin endpoint to revert to specific database snapshot
+- **✅ Version Tracking**: Database snapshots stored with version metadata
+
+### Rollback and Recovery
+
+The system implements comprehensive rollback capabilities:
+
+1. **Automatic Rollback on Validation Failure**
+   - If new data fails validation, automatically uses last known good data
+   - No manual intervention required
+   - Logged with warnings for admin visibility
+
+2. **Manual Rollback via Admin Endpoint**
+   ```bash
+   # Rollback to latest snapshot
+   curl -X POST https://worker.example.com/admin/rollback \
+     -H "Authorization: Bearer YOUR_API_KEY"
+
+   # Rollback to specific version
+   curl -X POST https://worker.example.com/admin/rollback \
+     -H "Authorization: Bearer YOUR_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"version": "2026-01-26T12-00-00-000Z"}'
+   ```
+
+3. **Database Snapshots**
+   - Created after each successful update
+   - Stored with version, timestamp, hash, and record count
+   - Referenced in METADATA_STORE for quick access
+   - Data backed up in R2 for restoration
+
+### Admin Endpoints for Diff and Rollback
+
+- **`POST /admin/rollback`** - Rollback database to previous version
+  - Optional `version` parameter to rollback to specific snapshot
+  - Returns rollback status and records restored
+  
+- **`GET /admin/diffs`** - View diff history
+  - Query parameter: `limit` (default: 10, max: 100)
+  - Returns list of diffs with change summaries
+  
+- **`GET /admin/metadata`** - View database metadata
+  - Returns current version, record count, and snapshot info
 
 ### Error Handling
 
@@ -2006,7 +2092,93 @@ The worker implements a sophisticated data update workflow with the core fetch, 
 - **✅ Graceful Degradation**: Fallback to last good data on validation failure
 - **✅ Event Tracking**: All events stored in R2 with unique IDs
 - **✅ Error Details**: Stack traces and metadata captured for debugging
-- **Admin Visibility**: Errors accessible via admin endpoints
+- **✅ Admin Visibility**: Errors accessible via admin endpoints
+- **✅ Diff Logging**: Change summaries logged with each update
+
+### Logging Approach for Diff Operations
+
+The system implements comprehensive logging for all diff and patching operations:
+
+#### Diff Event Logging
+- **Location**: R2 bucket under `/diffs/diff-{version}.json`
+- **Format**: JSON with detailed change information
+- **Content**:
+  ```json
+  {
+    "hasChanges": true,
+    "added": ["AA1AA", "BB2BB"],
+    "modified": ["CC3CC"],
+    "deleted": ["DD4DD"],
+    "unchanged": 1000,
+    "summary": {
+      "addedCount": 2,
+      "modifiedCount": 1,
+      "deletedCount": 1,
+      "unchangedCount": 1000,
+      "totalOldRecords": 1002,
+      "totalNewRecords": 1003
+    },
+    "metadata": {
+      "oldVersion": "2026-01-26T12-00-00-000Z",
+      "newVersion": "2026-01-27T12-00-00-000Z",
+      "oldHash": "abc123...",
+      "newHash": "def456...",
+      "timestamp": "2026-01-27T12:00:00.000Z"
+    }
+  }
+  ```
+
+#### Processing Event Logging
+- **Location**: R2 bucket under `/events/logs-YYYY-MM-DD.jsonl`
+- **Format**: JSONL (JSON Lines) for efficient log streaming
+- **Event Types**:
+  - `fetch`: Data fetch operations
+  - `extract`: ZIP extraction operations
+  - `validate`: Data validation operations
+  - `diff`: Diff calculation operations (NEW)
+  - `patch`: Database patching operations (NEW)
+  - `fallback`: Fallback operations
+  - `error`: Error events
+
+#### Metadata Logging
+- **Location**: R2 bucket under `/metadata/processing-{version}.json`
+- **Content**: Includes diff summary in metadata
+  ```json
+  {
+    "version": "2026-01-27T12-00-00-000Z",
+    "timestamp": "2026-01-27T12:00:00.000Z",
+    "duration": 5432,
+    "fetchSize": 1048576,
+    "recordCount": 1003,
+    "hash": "def456...",
+    "diff": {
+      "added": 2,
+      "modified": 1,
+      "deleted": 1
+    }
+  }
+  ```
+
+#### Console Logging
+- All diff operations logged to console with structured JSON
+- Log levels: `info`, `warn`, `error`
+- Includes operation context and performance metrics
+- Example:
+  ```json
+  {
+    "timestamp": "2026-01-27T12:00:00.000Z",
+    "level": "info",
+    "message": "Diff calculation completed",
+    "details": {
+      "hasChanges": true,
+      "added": 2,
+      "modified": 1,
+      "deleted": 1,
+      "unchanged": 1000,
+      "duration": 125
+    }
+  }
+  ```
 
 ### Configuration
 
