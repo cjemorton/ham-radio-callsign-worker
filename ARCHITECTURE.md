@@ -1012,7 +1012,7 @@ npm run deploy
 ```toml
 name = "ham-radio-callsign-worker"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-01-01"
 
 [env.production]
 route = "api.example.com/*"
