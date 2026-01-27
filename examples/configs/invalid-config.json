@@ -1,0 +1,11 @@
+{
+  "dataSource": {
+    "originZipUrl": "invalid-url",
+    "expectedSchema": {
+      "fields": []
+    }
+  },
+  "features": {
+    "jwtAuth": "yes"
+  }
+}

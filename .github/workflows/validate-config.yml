@@ -1,0 +1,135 @@
+name: Validate Configuration
+
+on:
+  pull_request:
+    paths:
+      - 'examples/configs/**'
+      - 'src/config.ts'
+      - 'src/validation.ts'
+      - 'src/types.ts'
+      - 'wrangler.toml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'examples/configs/**'
+      - 'src/config.ts'
+      - 'src/validation.ts'
+      - 'src/types.ts'
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Configuration file to validate (relative path)'
+        required: false
+        default: 'examples/configs/valid-config.json'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-config:
+    name: Validate Configuration Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate all config files
+        id: validate
+        run: |
+          echo "## Configuration Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Find all config files
+          config_files=$(find examples/configs -name "*.json" -type f 2>/dev/null || echo "")
+          
+          if [ -z "$config_files" ]; then
+            echo "ℹ️ No configuration files found to validate" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          
+          all_passed=true
+          
+          # Validate each config file
+          for config_file in $config_files; do
+            echo "### Validating: \`$config_file\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Run validation and capture output
+            if npm run validate:config -- --file "$config_file" > validation_output.txt 2>&1; then
+              echo "✅ **Valid**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              cat validation_output.txt >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **Invalid**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              cat validation_output.txt >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              all_passed=false
+            fi
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+          done
+          
+          # Set final status
+          if [ "$all_passed" = false ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Configuration validation failed. Please fix the errors above.**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **All configuration files are valid!**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Validate specific config file (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.config_file != ''
+        run: |
+          echo "## Manual Validation: ${{ github.event.inputs.config_file }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "${{ github.event.inputs.config_file }}" ]; then
+            npm run validate:config -- --file "${{ github.event.inputs.config_file }}" --verbose
+          else
+            echo "❌ File not found: ${{ github.event.inputs.config_file }}" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && (success() || failure())
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const step_summary = process.env.GITHUB_STEP_SUMMARY;
+            
+            // Read the step summary
+            let summary = '';
+            try {
+              summary = fs.readFileSync(step_summary, 'utf8');
+            } catch (e) {
+              summary = 'Configuration validation completed. Check the workflow logs for details.';
+            }
+            
+            // Post comment on PR
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
