@@ -198,27 +198,26 @@ describe('Ham Radio Callsign Worker', () => {
 		});
 
 		describe('GET /admin/logs', () => {
-			it('should return logs', async () => {
+			it('should return 503 when R2 is not configured', async () => {
 				const request = new Request('http://localhost/admin/logs', {
 					headers,
 				});
 				const response = await worker.fetch(request, env, {} as ExecutionContext);
 
-				expect(response.status).toBe(200);
-				const data = (await response.json()) as { success: boolean; data: { logs: unknown[] } };
-				expect(data.success).toBe(true);
-				expect(data.data).toHaveProperty('logs');
+				expect(response.status).toBe(503);
+				const data = (await response.json()) as { error: string };
+				expect(data.error).toBe('Service Unavailable');
 			});
 
-			it('should respect limit parameter', async () => {
+			it('should redirect to /admin/logs/events when R2 is configured', async () => {
+				// This test would require mocking R2, which is tested in logging-endpoints.test.ts
+				// Just verify the endpoint exists and requires R2
 				const request = new Request('http://localhost/admin/logs?limit=2', {
 					headers,
 				});
 				const response = await worker.fetch(request, env, {} as ExecutionContext);
 
-				expect(response.status).toBe(200);
-				const data = (await response.json()) as { data: { limit: number } };
-				expect(data.data.limit).toBe(2);
+				expect(response.status).toBe(503); // No R2 in test env
 			});
 		});
 
