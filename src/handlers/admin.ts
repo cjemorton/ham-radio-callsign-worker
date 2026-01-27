@@ -3,7 +3,8 @@
  */
 
 import type { Env, LogEntry } from '../types';
-import { successResponse, errorResponse, log } from '../utils';
+import { successResponse, errorResponse, log, HASH_DISPLAY_LENGTH } from '../utils';
+import { executeDataPipeline } from '../engine';
 
 /**
  * POST /admin/update
@@ -16,22 +17,50 @@ export async function forceUpdate(
 ): Promise<Response> {
 	log('info', 'Force update requested');
 
-	// TODO: Implement database update logic
-	if (!env.CALLSIGN_DB) {
+	try {
+		// Execute the data pipeline with on-demand flag
+		const result = await executeDataPipeline(env, {
+			onDemand: true,
+			skipValidation: false,
+		});
+
+		if (!result.success) {
+			return errorResponse(
+				'Update Failed',
+				'Failed to update database from source',
+				500,
+				{
+					errors: result.metadata.errors,
+					warnings: result.metadata.warnings,
+				}
+			);
+		}
+
+		return successResponse({
+			message: 'Database update completed successfully',
+			status: result.status,
+			metadata: result.metadata,
+			data: result.data
+				? {
+					version: result.data.version,
+					recordCount: result.data.recordCount,
+					hash: result.data.hash.substring(0, HASH_DISPLAY_LENGTH) + '...',
+				}
+				: undefined,
+		});
+	} catch (error) {
+		log('error', 'Force update failed', {
+			error: error instanceof Error ? error.message : String(error),
+		});
 		return errorResponse(
-			'Service Unavailable',
-			'Database is not configured.',
-			503
+			'Internal Server Error',
+			'An unexpected error occurred during update',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
 		);
 	}
-
-	// Placeholder response
-	return successResponse({
-		message: 'Database update initiated',
-		status: 'pending',
-		timestamp: new Date().toISOString(),
-		note: 'This is a placeholder. Full implementation requires database update logic.',
-	});
 }
 
 /**
@@ -223,4 +252,89 @@ export async function getStats(
 	};
 
 	return successResponse(stats);
+}
+
+/**
+ * POST /admin/fetch
+ * Trigger on-demand fetch, extraction, and validation
+ */
+export async function triggerFetch(
+	request: Request,
+	env: Env,
+	_ctx: ExecutionContext
+): Promise<Response> {
+	log('info', 'On-demand fetch triggered');
+
+	try {
+		// Parse optional parameters
+		let skipValidation = false;
+		let stagingMode = false;
+
+		try {
+			const contentType = request.headers.get('Content-Type');
+			if (contentType?.includes('application/json')) {
+				const body = (await request.json()) as {
+					skipValidation?: boolean;
+					stagingMode?: boolean;
+				};
+				skipValidation = body.skipValidation || false;
+				stagingMode = body.stagingMode || false;
+			}
+		} catch (error) {
+			// Ignore JSON parse errors, use defaults
+		}
+
+		// Execute the data pipeline with on-demand flag
+		const result = await executeDataPipeline(env, {
+			onDemand: true,
+			skipValidation,
+			stagingMode,
+		});
+
+		if (!result.success) {
+			return errorResponse(
+				'Fetch Failed',
+				'Failed to complete fetch-extract-validate workflow',
+				500,
+				{
+					status: result.status,
+					errors: result.metadata.errors,
+					warnings: result.metadata.warnings,
+					duration: result.metadata.duration,
+				}
+			);
+		}
+
+		return successResponse({
+			message: 'Fetch-extract-validate workflow completed successfully',
+			status: result.status,
+			metadata: {
+				timestamp: result.metadata.timestamp,
+				duration: result.metadata.duration,
+				fetchTriggered: result.metadata.fetchTriggered,
+				validationPassed: result.metadata.validationPassed,
+				fallbackUsed: result.metadata.fallbackUsed,
+				warnings: result.metadata.warnings,
+			},
+			data: result.data
+				? {
+					version: result.data.version,
+					recordCount: result.data.recordCount,
+					hash: result.data.hash.substring(0, HASH_DISPLAY_LENGTH) + '...',
+				}
+				: undefined,
+		});
+	} catch (error) {
+		log('error', 'Fetch trigger failed', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'An unexpected error occurred during fetch',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
 }

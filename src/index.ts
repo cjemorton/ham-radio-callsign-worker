@@ -76,6 +76,7 @@ function createRouter(): Router {
 	);
 
 	router.post('/admin/update', adminMiddleware(adminHandlers.forceUpdate));
+	router.post('/admin/fetch', adminMiddleware(adminHandlers.triggerFetch));
 	router.post('/admin/rebuild', adminMiddleware(adminHandlers.rebuildDatabase));
 	router.post('/admin/rollback', adminMiddleware(adminHandlers.rollbackDatabase));
 	router.get('/admin/logs', adminMiddleware(adminHandlers.getLogs));

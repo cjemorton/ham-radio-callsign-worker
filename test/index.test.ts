@@ -159,14 +159,15 @@ describe('Ham Radio Callsign Worker', () => {
 		const headers = { 'X-API-Key': 'test-api-key-123' };
 
 		describe('POST /admin/update', () => {
-			it('should return success message for force update', async () => {
+			it('should return error when pipeline fails', async () => {
 				const request = new Request('http://localhost/admin/update', {
 					method: 'POST',
 					headers,
 				});
 				const response = await worker.fetch(request, env, {} as ExecutionContext);
 
-				expect(response.status).toBe(503); // Database not configured
+				// Should fail with 500 because required services are not configured
+				expect(response.status).toBe(500);
 				const data = await response.json();
 				expect(data).toHaveProperty('error');
 			});

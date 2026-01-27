@@ -170,3 +170,84 @@ export interface ConfigHealth {
 	kvAvailable: boolean;
 	validationErrors?: string[];
 }
+
+/**
+ * Fetch engine result
+ */
+export interface FetchResult {
+	success: boolean;
+	data?: ArrayBuffer;
+	error?: string;
+	metadata: {
+		url: string;
+		timestamp: string;
+		size?: number;
+		duration: number;
+	};
+}
+
+/**
+ * Extraction result
+ */
+export interface ExtractionResult {
+	success: boolean;
+	content?: string;
+	error?: string;
+	metadata: {
+		fileName: string;
+		timestamp: string;
+		size?: number;
+		encoding?: string;
+	};
+}
+
+/**
+ * Validation result
+ */
+export interface ValidationResult {
+	success: boolean;
+	errors: string[];
+	warnings: string[];
+	metadata: {
+		timestamp: string;
+		hashMatch?: boolean;
+		schemaMatch?: boolean;
+		headerMatch?: boolean;
+		recordCount?: number;
+	};
+}
+
+/**
+ * Data processing event for R2 logging
+ */
+export interface DataProcessingEvent {
+	eventId: string;
+	timestamp: string;
+	type: 'fetch' | 'extract' | 'validate' | 'fallback' | 'error';
+	status: 'success' | 'failure' | 'warning';
+	details: {
+		message: string;
+		duration?: number;
+		dataSize?: number;
+		recordCount?: number;
+		diff?: {
+			added: number;
+			modified: number;
+			deleted: number;
+		};
+		error?: string;
+		stackTrace?: string;
+		metadata?: Record<string, unknown>;
+	};
+}
+
+/**
+ * Fallback data metadata
+ */
+export interface FallbackMetadata {
+	version: string;
+	timestamp: string;
+	hash: string;
+	recordCount: number;
+	reason: string;
+}
