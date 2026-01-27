@@ -5,6 +5,11 @@
 import type { Env, LogEntry } from '../types';
 import { successResponse, errorResponse, log, HASH_DISPLAY_LENGTH } from '../utils';
 import { executeDataPipeline } from '../engine';
+import {
+	rollbackToSnapshot,
+	getLatestSnapshot,
+	getDatabaseRecordCount,
+} from '../engine/database';
 
 /**
  * POST /admin/update
@@ -115,7 +120,6 @@ export async function rollbackDatabase(
 		// Ignore JSON parse errors, proceed with default rollback
 	}
 
-	// TODO: Implement database rollback logic
 	if (!env.CALLSIGN_DB) {
 		return errorResponse(
 			'Service Unavailable',
@@ -124,14 +128,41 @@ export async function rollbackDatabase(
 		);
 	}
 
-	// Placeholder response
-	return successResponse({
-		message: 'Database rollback initiated',
-		targetVersion: targetVersion || 'previous',
-		status: 'pending',
-		timestamp: new Date().toISOString(),
-		note: 'This is a placeholder. Full implementation requires database versioning logic.',
-	});
+	try {
+		log('info', 'Executing rollback', { targetVersion });
+
+		const result = await rollbackToSnapshot(env, targetVersion);
+
+		if (!result.success) {
+			return errorResponse(
+				'Rollback Failed',
+				result.error || 'Failed to rollback database',
+				500,
+				{
+					timestamp: result.timestamp,
+				}
+			);
+		}
+
+		return successResponse({
+			message: 'Database rollback completed successfully',
+			rolledBackTo: result.rolledBackTo,
+			recordsRestored: result.recordsRestored,
+			timestamp: result.timestamp,
+		});
+	} catch (error) {
+		log('error', 'Rollback failed with exception', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'An unexpected error occurred during rollback',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
 }
 
 /**
@@ -194,7 +225,6 @@ export async function getMetadata(
 ): Promise<Response> {
 	log('info', 'Metadata requested');
 
-	// TODO: Implement actual metadata retrieval
 	if (!env.METADATA_STORE) {
 		return errorResponse(
 			'Service Unavailable',
@@ -203,20 +233,44 @@ export async function getMetadata(
 		);
 	}
 
-	// Placeholder response
-	return successResponse({
-		database: {
-			version: '1.0.0',
-			recordCount: 1000000,
-			lastUpdated: new Date(Date.now() - 86400000).toISOString(),
-			size: '250MB',
-		},
-		cache: {
-			hitRate: 0.85,
-			entryCount: 50000,
-		},
-		note: 'This is placeholder data. Full implementation requires metadata storage.',
-	});
+	try {
+		// Get latest snapshot info
+		const snapshot = env.CALLSIGN_DB ? await getLatestSnapshot(env) : null;
+		const recordCount = env.CALLSIGN_DB
+			? await getDatabaseRecordCount(env)
+			: 0;
+
+		return successResponse({
+			database: {
+				version: snapshot?.version || 'unknown',
+				recordCount,
+				lastUpdated: snapshot?.timestamp || 'unknown',
+				hash: snapshot?.hash
+					? snapshot.hash.substring(0, HASH_DISPLAY_LENGTH) + '...'
+					: 'unknown',
+			},
+			snapshot: snapshot
+				? {
+					version: snapshot.version,
+					timestamp: snapshot.timestamp,
+					recordCount: snapshot.recordCount,
+					available: true,
+				}
+				: { available: false },
+		});
+	} catch (error) {
+		log('error', 'Failed to get metadata', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to retrieve metadata',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
 }
 
 /**
@@ -331,6 +385,67 @@ export async function triggerFetch(
 		return errorResponse(
 			'Internal Server Error',
 			'An unexpected error occurred during fetch',
+			500,
+			{
+				error: error instanceof Error ? error.message : String(error),
+			}
+		);
+	}
+}
+
+/**
+ * GET /admin/diffs
+ * View diff history
+ */
+export async function getDiffHistory(
+	request: Request,
+	env: Env,
+	_ctx: ExecutionContext
+): Promise<Response> {
+	log('info', 'Diff history requested');
+
+	if (!env.DATA_EXPORTS) {
+		return errorResponse(
+			'Service Unavailable',
+			'R2 bucket is not configured.',
+			503
+		);
+	}
+
+	try {
+		const url = new URL(request.url);
+		const limit = parseInt(url.searchParams.get('limit') || '10', 10);
+
+		// List diff reports from R2
+		const listed = await env.DATA_EXPORTS.list({
+			prefix: 'diffs/',
+			limit: Math.min(limit, 100),
+		});
+
+		const diffs = await Promise.all(
+			listed.objects.map(async (obj) => {
+				const diffObject = await env.DATA_EXPORTS!.get(obj.key);
+				if (!diffObject) return null;
+
+				const diffData = await diffObject.text();
+				return JSON.parse(diffData);
+			})
+		);
+
+		const validDiffs = diffs.filter((d) => d !== null);
+
+		return successResponse({
+			count: validDiffs.length,
+			limit,
+			diffs: validDiffs,
+		});
+	} catch (error) {
+		log('error', 'Failed to get diff history', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+		return errorResponse(
+			'Internal Server Error',
+			'Failed to retrieve diff history',
 			500,
 			{
 				error: error instanceof Error ? error.message : String(error),

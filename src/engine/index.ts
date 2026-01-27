@@ -2,7 +2,7 @@
  * Main orchestrator for fetch, extract, and validate workflow
  */
 
-import type { Env, FallbackMetadata, ValidationResult } from '../types';
+import type { Env, FallbackMetadata, ValidationResult, DiffResult } from '../types';
 import { log } from '../utils';
 import { loadConfig } from '../config';
 import {
@@ -17,6 +17,17 @@ import {
 	handleValidationFailure,
 } from './fallback';
 import { storeMetadata, logErrorEvent } from './logger';
+import {
+	calculateDiff,
+	storeDiffReport,
+	getLastDataContent,
+} from './diff';
+import {
+	initializeDatabase,
+	createPatchOperations,
+	applyPatchOperations,
+	createDatabaseSnapshot,
+} from './database';
 
 /**
  * Result of the full processing workflow
@@ -35,12 +46,14 @@ export interface ProcessingResult {
 		recordCount: number;
 		hash: string;
 	};
+	diff?: DiffResult;
 	metadata: {
 		timestamp: string;
 		duration: number;
 		fetchTriggered: boolean;
 		validationPassed: boolean;
 		fallbackUsed: boolean;
+		databasePatched: boolean;
 		errors: string[];
 		warnings: string[];
 	};
@@ -83,6 +96,7 @@ export async function executeDataPipeline(
 					fetchTriggered: false,
 					validationPassed: true,
 					fallbackUsed: false,
+					databasePatched: false,
 					errors: [],
 					warnings: [fetchCheck.reason],
 				},
@@ -173,6 +187,7 @@ export async function executeDataPipeline(
 							fetchTriggered: true,
 							validationPassed: false,
 							fallbackUsed: true,
+							databasePatched: false,
 							errors: validationResult.errors,
 							warnings,
 						},
@@ -188,7 +203,7 @@ export async function executeDataPipeline(
 			warnings.push(...validationResult.warnings);
 		}
 
-		// Step 7: Success - store as new last good data
+		// Step 7: Calculate diff with previous data
 		const hash = await calculateHash(extractResult.content);
 		const version = new Date().toISOString().replace(/[:.]/g, '-');
 		
@@ -196,6 +211,58 @@ export async function executeDataPipeline(
 		const recordCount = validationResult?.metadata.recordCount ?? 
 			extractResult.content.split('\n').filter(l => l.trim()).length - 1;
 
+		log('info', 'Calculating diff with previous data');
+		const lastData = await getLastDataContent(env);
+		const diff = await calculateDiff(
+			extractResult.content,
+			lastData?.content || null,
+			config.data,
+			lastData?.version,
+			version
+		);
+
+		// Store diff report in R2
+		await storeDiffReport(env, diff);
+
+		// Step 8: Apply database patches if D1 is available and there are changes
+		let databasePatched = false;
+		if (env.CALLSIGN_DB && diff.hasChanges) {
+			log('info', 'Applying database patches', {
+				added: diff.summary.addedCount,
+				modified: diff.summary.modifiedCount,
+				deleted: diff.summary.deletedCount,
+			});
+
+			// Initialize database if needed
+			await initializeDatabase(env);
+
+			// Create patch operations
+			const operations = createPatchOperations(
+				extractResult.content,
+				lastData?.content || null,
+				diff,
+				config.data
+			);
+
+			// Apply patches
+			const patchResult = await applyPatchOperations(env, operations);
+
+			if (patchResult.success) {
+				databasePatched = true;
+				log('info', 'Database patches applied successfully', {
+					operationsApplied: patchResult.appliedCount,
+				});
+			} else {
+				warnings.push(
+					`Failed to apply database patches: ${patchResult.error}`
+				);
+			}
+		} else if (env.CALLSIGN_DB && !diff.hasChanges) {
+			log('info', 'No database changes detected, skipping patching');
+			databasePatched = false;
+		}
+
+		// Step 9: Store as new last good data
 		const fallbackMetadata: FallbackMetadata = {
 			version,
 			timestamp: new Date().toISOString(),
@@ -206,6 +273,12 @@ export async function executeDataPipeline(
 
 		await storeLastGoodData(env, extractResult.content, fallbackMetadata);
 
+		// Create database snapshot for rollback
+		if (env.CALLSIGN_DB && databasePatched) {
+			const dataPath = `fallback/last-good-data-${version}.txt`;
+			await createDatabaseSnapshot(env, version, recordCount, hash, dataPath);
+		}
+
 		// Store processing metadata
 		await storeMetadata(env, `processing-${version}`, {
 			version,
@@ -214,6 +287,11 @@ export async function executeDataPipeline(
 			fetchSize: fetchResult.metadata.size,
 			recordCount,
 			hash,
+			diff: {
+				added: diff.summary.addedCount,
+				modified: diff.summary.modifiedCount,
+				deleted: diff.summary.deletedCount,
+			},
 		});
 
 		// Update last fetch timestamp
@@ -222,6 +300,7 @@ export async function executeDataPipeline(
 		log('info', 'Data pipeline completed successfully', {
 			version,
 			recordCount,
+			databasePatched,
 			duration: Date.now() - startTime,
 		});
 
@@ -234,12 +313,14 @@ export async function executeDataPipeline(
 				recordCount,
 				hash,
 			},
+			diff,
 			metadata: {
 				timestamp: new Date().toISOString(),
 				duration: Date.now() - startTime,
 				fetchTriggered: true,
 				validationPassed: true,
 				fallbackUsed: false,
+				databasePatched,
 				errors: [],
 				warnings,
 			},
@@ -279,6 +360,7 @@ function createFailureResult(
 			fetchTriggered: true,
 			validationPassed: false,
 			fallbackUsed: false,
+			databasePatched: false,
 			errors,
 			warnings,
 		},

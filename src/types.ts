@@ -251,3 +251,60 @@ export interface FallbackMetadata {
 	recordCount: number;
 	reason: string;
 }
+
+/**
+ * Data diff result
+ */
+export interface DiffResult {
+	hasChanges: boolean;
+	added: string[];
+	modified: string[];
+	deleted: string[];
+	unchanged: number;
+	summary: {
+		addedCount: number;
+		modifiedCount: number;
+		deletedCount: number;
+		unchangedCount: number;
+		totalOldRecords: number;
+		totalNewRecords: number;
+	};
+	metadata: {
+		oldVersion?: string;
+		newVersion: string;
+		oldHash?: string;
+		newHash: string;
+		timestamp: string;
+	};
+}
+
+/**
+ * Database patch operation
+ */
+export interface PatchOperation {
+	type: 'insert' | 'update' | 'delete';
+	record: Record<string, string | undefined>;
+	key: string;
+}
+
+/**
+ * Database version snapshot
+ */
+export interface DatabaseSnapshot {
+	version: string;
+	timestamp: string;
+	recordCount: number;
+	hash: string;
+	dataPath: string;
+}
+
+/**
+ * Rollback result
+ */
+export interface RollbackResult {
+	success: boolean;
+	rolledBackTo?: string;
+	recordsRestored?: number;
+	error?: string;
+	timestamp: string;
+}
