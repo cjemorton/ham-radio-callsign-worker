@@ -42,10 +42,10 @@ export async function forceUpdate(
 			metadata: result.metadata,
 			data: result.data
 				? {
-						version: result.data.version,
-						recordCount: result.data.recordCount,
-						hash: result.data.hash.substring(0, 16) + '...',
-				  }
+					version: result.data.version,
+					recordCount: result.data.recordCount,
+					hash: result.data.hash.substring(0, 16) + '...',
+				}
 				: undefined,
 		});
 	} catch (error) {
@@ -318,10 +318,10 @@ export async function triggerFetch(
 			},
 			data: result.data
 				? {
-						version: result.data.version,
-						recordCount: result.data.recordCount,
-						hash: result.data.hash.substring(0, 16) + '...',
-				  }
+					version: result.data.version,
+					recordCount: result.data.recordCount,
+					hash: result.data.hash.substring(0, 16) + '...',
+				}
 				: undefined,
 		});
 	} catch (error) {
