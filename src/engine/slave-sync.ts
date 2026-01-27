@@ -18,6 +18,16 @@ import { log } from '../utils';
 // KV key prefix for sync health tracking
 const SYNC_HEALTH_PREFIX = 'sync:health:';
 
+// Health tracking thresholds
+const DEGRADED_THRESHOLD = 1;
+const FAILED_THRESHOLD = 3;
+
+// Health data expiration (7 days in seconds)
+const HEALTH_DATA_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+// Priority levels for canary deployment
+const PRIMARY_PRIORITY = 1;
+
 /**
  * Synchronize patch operations to all configured slave endpoints
  */
@@ -156,7 +166,7 @@ async function syncToSqlSlave(
 		await new Promise((resolve) => setTimeout(resolve, 50));
 
 		// Check for canary rollout flag
-		if (endpoint.priority && endpoint.priority > 1 && !config.features.canaryDeployment) {
+		if (endpoint.priority && endpoint.priority > PRIMARY_PRIORITY && !config.features.canaryDeployment) {
 			log('info', 'Skipping non-primary SQL slave (canary disabled)', {
 				slaveId,
 				priority: endpoint.priority,
@@ -327,15 +337,15 @@ async function updateSyncHealth(
 		};
 
 		// Determine overall status based on consecutive failures
-		if (health.consecutiveFailures >= 3) {
+		if (health.consecutiveFailures >= FAILED_THRESHOLD) {
 			health.status = 'failed';
-		} else if (health.consecutiveFailures > 0) {
+		} else if (health.consecutiveFailures >= DEGRADED_THRESHOLD) {
 			health.status = 'degraded';
 		}
 
 		// Store updated health data (expire after 7 days)
 		await env.METADATA_STORE.put(healthKey, JSON.stringify(health), {
-			expirationTtl: 7 * 24 * 60 * 60, // 7 days
+			expirationTtl: HEALTH_DATA_TTL_SECONDS,
 		});
 
 		log('info', 'Updated sync health tracking', {

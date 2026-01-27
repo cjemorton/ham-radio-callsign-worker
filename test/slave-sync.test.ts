@@ -201,7 +201,7 @@ describe('Slave Synchronization Engine', () => {
 			expect(result.results[0].slaveId).toBe('sql-enabled');
 		});
 
-		it('should skip non-primary slaves when canary is disabled', async () => {
+		it('should sync to non-primary slaves with 0 operations when canary is disabled', async () => {
 			const primaryEndpoint: SlaveEndpoint = {
 				id: 'sql-primary',
 				type: 'postgresql',
