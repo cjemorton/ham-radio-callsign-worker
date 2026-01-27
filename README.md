@@ -2,6 +2,8 @@
 
 A Cloudflare Worker service for ham radio callsign lookups, database management, and administrative functions.
 
+> 📋 **For a comprehensive architectural overview, development roadmap, and implementation details, see [ARCHITECTURE.md](./ARCHITECTURE.md)**
+
 ## Table of Contents
 
 - [Project Background](#project-background)
