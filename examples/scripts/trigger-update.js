@@ -20,7 +20,7 @@ async function triggerUpdate() {
   try {
     console.log('Triggering data update...');
     
-    const response = await fetch(`${WORKER_URL}/api/v1/admin/update`, {
+    const response = await fetch(`${WORKER_URL}/admin/update`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${ADMIN_API_KEY}`,
