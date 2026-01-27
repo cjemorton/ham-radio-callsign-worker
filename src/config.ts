@@ -104,9 +104,11 @@ function getDefaultConfig(): ConfigData {
 		externalSync: {
 			sql: {
 				enabled: false,
+				endpoints: [],
 			},
 			redis: {
 				enabled: false,
+				endpoints: [],
 			},
 		},
 		features: {

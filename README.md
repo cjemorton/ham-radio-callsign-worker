@@ -2299,11 +2299,19 @@ When rate limited, clients receive a `429 Too Many Requests` response:
 
 ## External Database Synchronization
 
-Phase 6 ([Issue #10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10)) introduces the capability to synchronize callsign data with external SQL databases and Redis caches.
+The slave synchronization engine enables distributed deployments where the Cloudflare Worker acts as the authoritative data source, propagating updates to one or more external storage systems.
 
 ### Overview
 
-The slave synchronization engine enables distributed deployments where the Cloudflare Worker acts as the authoritative data source, propagating updates to one or more external storage systems.
+After each successful master database (D1) update, the system automatically propagates differential updates to configured slave endpoints. This happens asynchronously and never blocks the main update workflow.
+
+**Key Features**:
+- Automatic propagation after successful D1 updates
+- Differential updates only (added, modified, deleted records)
+- Parallel synchronization to all enabled slaves
+- Health tracking per slave endpoint
+- Graceful degradation on slave failures
+- Canary rollout support for gradual deployments
 
 ### Use Cases
 
@@ -2337,126 +2345,356 @@ Cloudflare Worker (Master)
 
 ### Configuration
 
-Slave endpoints are configured in the KV configuration store (Phase 3):
+Slave endpoints are configured in the KV configuration store. Use the admin API to update configuration:
+
+#### Configuration Structure
 
 ```json
 {
-  "slaves": {
-    "sql": [
-      {
-        "id": "region-a-sql",
-        "type": "postgresql",
-        "endpoint": "postgres://host:5432/callsigns",
-        "credentials": "KV_SECRET_REF",
+  "features": {
+    "externalSync": true,
+    "canaryDeployment": false
+  },
+  "externalSync": {
+    "sql": {
+      "enabled": true,
+      "endpoints": [
+        {
+          "id": "region-a-sql",
+          "type": "postgresql",
+          "endpoint": "postgres://host:5432/callsigns",
+          "tableName": "callsigns",
+          "enabled": true,
+          "priority": 1
+        },
+        {
+          "id": "region-b-sql",
+          "type": "mysql",
+          "endpoint": "mysql://host:3306/callsigns",
+          "tableName": "callsigns",
+          "enabled": true,
+          "priority": 2
+        }
+      ]
+    },
+    "redis": {
+      "enabled": true,
+      "endpoints": [
+        {
+          "id": "cache-a",
+          "endpoint": "redis://host:6379",
+          "ttl": 86400,
+          "keyPrefix": "callsign:",
+          "enabled": true
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Configuration Fields
+
+**SQL Endpoint Fields**:
+- `id` (required): Unique identifier for the slave
+- `type` (required): Database type - `postgresql`, `mysql`, `mariadb`, `sqlite`, or `mssql`
+- `endpoint` (required): Connection string or URL
+- `tableName` (optional): Target table name (defaults to `callsigns`)
+- `enabled` (required): Enable/disable this endpoint
+- `priority` (optional): Priority level (1 = primary, 2+ = secondary)
+
+**Redis Endpoint Fields**:
+- `id` (required): Unique identifier for the cache
+- `endpoint` (required): Redis connection URL
+- `ttl` (optional): Time-to-live in seconds (default: 3600)
+- `keyPrefix` (optional): Prefix for all keys (default: `callsign:`)
+- `enabled` (required): Enable/disable this endpoint
+
+### Setup Process
+
+#### Step 1: Enable External Sync Feature
+
+Update your configuration via the admin API:
+
+```bash
+# Get current configuration
+curl -H "X-API-Key: your-key" \
+  https://your-worker.workers.dev/admin/config
+
+# Update configuration to enable external sync
+curl -X POST -H "X-API-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "features": {
+      "externalSync": true
+    }
+  }' \
+  https://your-worker.workers.dev/admin/config
+```
+
+#### Step 2: Configure Slave Endpoints
+
+Add your SQL and Redis endpoints to the configuration:
+
+```bash
+curl -X POST -H "X-API-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "externalSync": {
+      "sql": {
         "enabled": true,
-        "priority": 1
+        "endpoints": [
+          {
+            "id": "primary-postgres",
+            "type": "postgresql",
+            "endpoint": "postgres://user:pass@host:5432/db",
+            "enabled": true,
+            "priority": 1
+          }
+        ]
       },
-      {
-        "id": "region-b-sql",
-        "type": "mysql",
-        "endpoint": "mysql://host:3306/callsigns",
-        "credentials": "KV_SECRET_REF",
+      "redis": {
         "enabled": true,
-        "priority": 2
+        "endpoints": [
+          {
+            "id": "primary-cache",
+            "endpoint": "redis://user:pass@host:6379",
+            "ttl": 3600,
+            "enabled": true
+          }
+        ]
       }
-    ],
-    "redis": [
-      {
-        "id": "cache-a",
-        "endpoint": "redis://host:6379",
-        "credentials": "KV_SECRET_REF",
-        "ttl": 86400,
-        "enabled": true
-      }
-    ]
+    }
+  }' \
+  https://your-worker.workers.dev/admin/config
+```
+
+#### Step 3: Trigger a Database Update
+
+Force an update to test the synchronization:
+
+```bash
+curl -X POST -H "X-API-Key: your-key" \
+  https://your-worker.workers.dev/admin/update
+```
+
+The response will include `slaveSyncResult` showing synchronization status:
+
+```json
+{
+  "success": true,
+  "data": {
+    "slaveSyncResult": {
+      "totalSlaves": 2,
+      "successCount": 2,
+      "failureCount": 0,
+      "results": [
+        {
+          "success": true,
+          "slaveId": "primary-postgres",
+          "type": "sql",
+          "appliedOperations": 150,
+          "duration": 234,
+          "timestamp": "2024-01-15T10:30:00Z"
+        },
+        {
+          "success": true,
+          "slaveId": "primary-cache",
+          "type": "redis",
+          "appliedOperations": 150,
+          "duration": 87,
+          "timestamp": "2024-01-15T10:30:00Z"
+        }
+      ]
+    }
   }
 }
 ```
 
 ### Synchronization Process
 
-1. **Update Trigger**: After successful D1 database update
+The synchronization happens automatically after each successful master database update:
+
+1. **Update Trigger**: D1 database update completes successfully
 2. **Load Configuration**: Retrieve active slave endpoints from KV
-3. **Parallel Propagation**: Send delta updates to all enabled slaves
-4. **Change Application**: Apply only modified records (minimal updates)
-5. **Health Tracking**: Record sync status and timing
-6. **Error Handling**: Log failures without blocking main workflow
+3. **Create Operations**: Build patch operations (INSERT, UPDATE, DELETE)
+4. **Parallel Propagation**: Send delta updates to all enabled slaves
+5. **Apply Changes**: Execute operations on each slave endpoint
+6. **Health Tracking**: Record sync status, duration, and metrics
+7. **Error Handling**: Log failures without blocking main workflow
 
 ### Propagation Strategy
 
 **Differential Updates Only**:
 - Transmit only added, modified, or deleted records
 - Minimize network traffic and database operations
-- Include checksums for verification
+- Full records included in each operation for slave independence
 
 **Parallel Execution**:
 - Sync to all slaves simultaneously (non-blocking)
 - Independent failure handling for each slave
 - Continue on partial failures
+- No inter-slave dependencies
+
+**Operation Types**:
+- `INSERT`: Add new callsign records
+- `UPDATE`: Modify existing callsign data
+- `DELETE`: Remove deleted callsigns
 
 ### Health Monitoring
 
-**Per-Slave Metrics**:
+The system tracks health metrics for each slave endpoint:
+
+**Tracked Metrics**:
 - Last successful sync timestamp
-- Sync latency and duration
-- Error count and rate
-- Cumulative record count
-- Data freshness indicator
+- Last sync duration (milliseconds)
+- Last sync record count
+- Consecutive failure count
+- Status: `healthy`, `degraded`, or `failed`
+- Last error message (if any)
 
-**Admin Endpoints**:
-```bash
-# View slave synchronization status
-GET /admin/slaves/status
+**Health Status Rules**:
+- `healthy`: No recent failures
+- `degraded`: 1-2 consecutive failures
+- `failed`: 3+ consecutive failures
 
-# Force synchronization to specific slave
-POST /admin/slaves/{slave_id}/sync
-
-# Enable/disable slave
-POST /admin/slaves/{slave_id}/toggle
-```
+Health data is stored in the METADATA_STORE KV namespace with a 7-day expiration.
 
 ### Error Handling
 
 **Graceful Degradation**:
-- Main worker operation never blocked by slave failures
-- Errors logged to R2 with full context
-- Automatic retry with exponential backoff
-- Manual retry available via admin endpoint
+- Main worker operation **never blocked** by slave failures
+- Each slave sync is independent
+- Errors logged with full context
+- System continues with partial success
 
-**Failure Scenarios**:
+**Failure Scenarios Handled**:
 - Network connectivity issues
-- Authentication failures
+- Authentication failures  
 - Slave database unavailable
-- Schema mismatches
-- Constraint violations
+- Connection timeouts
+- Operation failures
+
+**Logging**:
+All sync operations and failures are logged with:
+- Slave ID and type
+- Operation counts
+- Duration metrics
+- Error messages
+- Full stack traces (on errors)
 
 ### Canary Deployments
 
-Support for gradual rollout of new slaves:
+The canary deployment feature allows gradual rollout of new slave endpoints:
 
+#### How It Works
+
+When `features.canaryDeployment` is `false`:
+- Only priority 1 slaves receive updates
+- Priority 2+ slaves are skipped
+- Used to test new slaves safely
+
+When `features.canaryDeployment` is `true`:
+- All enabled slaves receive updates
+- Full rollout to all endpoints
+
+#### Example Workflow
+
+**Phase 1: Add New Slave (Canary Off)**
 ```json
 {
-  "canary": {
-    "enabled": true,
-    "percentage": 10,
-    "targetSlaves": ["new-slave-id"]
+  "features": { "canaryDeployment": false },
+  "externalSync": {
+    "sql": {
+      "endpoints": [
+        { "id": "existing", "priority": 1, "enabled": true },
+        { "id": "new-slave", "priority": 2, "enabled": true }
+      ]
+    }
   }
 }
 ```
+Result: Only `existing` receives updates, `new-slave` is ready but idle.
 
-- Test new slaves with limited traffic
-- Gradual increase in sync percentage
-- Easy rollback on issues
-- A/B testing of different configurations
+**Phase 2: Test New Slave**
+Monitor `new-slave` infrastructure, verify it's ready, then enable canary:
+
+```json
+{
+  "features": { "canaryDeployment": true }
+}
+```
+Result: Both slaves now receive updates.
+
+**Phase 3: Promote to Primary**
+Once stable, adjust priorities:
+```json
+{
+  "endpoints": [
+    { "id": "existing", "priority": 2 },
+    { "id": "new-slave", "priority": 1 }
+  ]
+}
+```
+
+### Implementation Details
+
+The slave sync engine is implemented in `src/engine/slave-sync.ts` with the following key functions:
+
+- `syncToSlaves()`: Main orchestrator for all slave syncs
+- `syncToSqlSlave()`: Handles SQL database synchronization
+- `syncToRedisSlave()`: Handles Redis cache synchronization  
+- `updateSyncHealth()`: Updates health tracking metrics
+- `getSyncHealth()`: Retrieves health status for all slaves
+- `clearSyncHealth()`: Clears health data for a slave
+
+### Current Limitations
+
+**Note**: The current implementation provides the framework and structure for slave synchronization, but does not include actual database/Redis connectivity:
+
+- SQL sync simulates operations (connection logic to be implemented)
+- Redis sync simulates operations (connection logic to be implemented)
+- Actual implementation will require appropriate client libraries or HTTP APIs
+- Connection pooling and transaction management to be added
+- Credential management system to be implemented
+
+To implement actual connectivity, you'll need to:
+1. Add appropriate database drivers or HTTP API clients
+2. Implement connection management and pooling
+3. Add credential storage/retrieval (use Cloudflare Secrets)
+4. Implement proper transaction handling
+5. Add retry logic with exponential backoff
 
 ### Best Practices
 
-1. **Monitor Health**: Regularly check slave sync status
-2. **Capacity Planning**: Ensure slaves can handle update volume
-3. **Credential Rotation**: Regularly rotate slave credentials
-4. **Network Security**: Use encrypted connections (TLS/SSL)
-5. **Backup Strategy**: Maintain backups independent of sync
-6. **Testing**: Test slave configurations before enabling in production
+1. **Start Small**: Begin with one slave endpoint in canary mode
+2. **Monitor Health**: Regularly check slave sync status via logs
+3. **Test Configuration**: Validate endpoints before enabling
+4. **Use Priorities**: Leverage priority levels for controlled rollout
+5. **Network Security**: Always use encrypted connections (TLS/SSL)
+6. **Credential Security**: Store credentials securely (never in config JSON)
+7. **Capacity Planning**: Ensure slaves can handle update volume
+8. **Independent Backups**: Maintain backups independent of sync
+
+### Troubleshooting
+
+**Problem**: Slave not receiving updates
+- Check `externalSync.{sql|redis}.enabled` is `true`
+- Check `features.externalSync` is `true`
+- Check endpoint `enabled` field is `true`
+- Check slave priority and canary mode settings
+
+**Problem**: All syncs failing
+- Verify endpoint URLs are correct
+- Check network connectivity from Worker
+- Verify credentials (when implemented)
+- Check logs for specific error messages
+
+**Problem**: Partial sync failures
+- Check health metrics for failing slaves
+- Review error messages in logs
+- Verify slave capacity and performance
+- Check for schema mismatches
 
 See [Issue #10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10) for complete specifications.
 

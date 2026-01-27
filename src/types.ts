@@ -100,15 +100,11 @@ export interface ConfigData {
 	externalSync?: {
 		sql?: {
 			enabled: boolean;
-			connectionString?: string;
-			tableName?: string;
+			endpoints?: SlaveEndpoint[];
 		};
 		redis?: {
 			enabled: boolean;
-			host?: string;
-			port?: number;
-			password?: string;
-			database?: number;
+			endpoints?: RedisEndpoint[];
 		};
 	};
 
@@ -306,5 +302,66 @@ export interface RollbackResult {
 	rolledBackTo?: string;
 	recordsRestored?: number;
 	error?: string;
+	timestamp: string;
+}
+
+/**
+ * SQL slave endpoint configuration
+ */
+export interface SlaveEndpoint {
+	id: string;
+	type: 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'mssql';
+	endpoint: string;
+	tableName?: string;
+	enabled: boolean;
+	priority?: number;
+}
+
+/**
+ * Redis cache endpoint configuration
+ */
+export interface RedisEndpoint {
+	id: string;
+	endpoint: string;
+	ttl?: number;
+	keyPrefix?: string;
+	enabled: boolean;
+}
+
+/**
+ * Slave sync health status
+ */
+export interface SlaveSyncHealth {
+	slaveId: string;
+	type: 'sql' | 'redis';
+	status: 'healthy' | 'degraded' | 'failed';
+	lastSyncTimestamp?: string;
+	lastSyncDuration?: number;
+	lastSyncRecordCount?: number;
+	consecutiveFailures: number;
+	lastError?: string;
+}
+
+/**
+ * Slave sync result
+ */
+export interface SlaveSyncResult {
+	success: boolean;
+	slaveId: string;
+	type: 'sql' | 'redis';
+	appliedOperations: number;
+	duration: number;
+	error?: string;
+	timestamp: string;
+}
+
+/**
+ * Aggregated sync results for all slaves
+ */
+export interface AggregateSyncResult {
+	totalSlaves: number;
+	successCount: number;
+	failureCount: number;
+	results: SlaveSyncResult[];
 	timestamp: string;
 }

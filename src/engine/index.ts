@@ -2,7 +2,7 @@
  * Main orchestrator for fetch, extract, and validate workflow
  */
 
-import type { Env, FallbackMetadata, ValidationResult, DiffResult } from '../types';
+import type { Env, FallbackMetadata, ValidationResult, DiffResult, AggregateSyncResult } from '../types';
 import { log } from '../utils';
 import { loadConfig } from '../config';
 import {
@@ -28,6 +28,7 @@ import {
 	applyPatchOperations,
 	createDatabaseSnapshot,
 } from './database';
+import { syncToSlaves } from './slave-sync';
 
 /**
  * Result of the full processing workflow
@@ -47,6 +48,7 @@ export interface ProcessingResult {
 		hash: string;
 	};
 	diff?: DiffResult;
+	slaveSyncResult?: AggregateSyncResult;
 	metadata: {
 		timestamp: string;
 		duration: number;
@@ -54,6 +56,7 @@ export interface ProcessingResult {
 		validationPassed: boolean;
 		fallbackUsed: boolean;
 		databasePatched: boolean;
+		slavesSynced: boolean;
 		errors: string[];
 		warnings: string[];
 	};
@@ -97,6 +100,7 @@ export async function executeDataPipeline(
 					validationPassed: true,
 					fallbackUsed: false,
 					databasePatched: false,
+					slavesSynced: false,
 					errors: [],
 					warnings: [fetchCheck.reason],
 				},
@@ -188,6 +192,7 @@ export async function executeDataPipeline(
 							validationPassed: false,
 							fallbackUsed: true,
 							databasePatched: false,
+							slavesSynced: false,
 							errors: validationResult.errors,
 							warnings,
 						},
@@ -226,6 +231,9 @@ export async function executeDataPipeline(
 
 		// Step 8: Apply database patches if D1 is available and there are changes
 		let databasePatched = false;
+		let slavesSynced = false;
+		let slaveSyncResult: AggregateSyncResult | undefined;
+		
 		if (env.CALLSIGN_DB && diff.hasChanges) {
 			log('info', 'Applying database patches', {
 				added: diff.summary.addedCount,
@@ -252,6 +260,17 @@ export async function executeDataPipeline(
 				log('info', 'Database patches applied successfully', {
 					operationsApplied: patchResult.appliedCount,
 				});
+				
+				// Step 8a: Sync to slave endpoints after successful master update
+				log('info', 'Propagating updates to slave endpoints');
+				slaveSyncResult = await syncToSlaves(env, operations, config.data);
+				slavesSynced = slaveSyncResult.totalSlaves > 0;
+				
+				if (slaveSyncResult.failureCount > 0) {
+					warnings.push(
+						`Some slave syncs failed: ${slaveSyncResult.failureCount} of ${slaveSyncResult.totalSlaves}`
+					);
+				}
 			} else {
 				warnings.push(
 					`Failed to apply database patches: ${patchResult.error}`
@@ -314,6 +333,7 @@ export async function executeDataPipeline(
 				hash,
 			},
 			diff,
+			slaveSyncResult,
 			metadata: {
 				timestamp: new Date().toISOString(),
 				duration: Date.now() - startTime,
@@ -321,6 +341,7 @@ export async function executeDataPipeline(
 				validationPassed: true,
 				fallbackUsed: false,
 				databasePatched,
+				slavesSynced,
 				errors: [],
 				warnings,
 			},
@@ -361,6 +382,7 @@ function createFailureResult(
 			validationPassed: false,
 			fallbackUsed: false,
 			databasePatched: false,
+			slavesSynced: false,
 			errors,
 			warnings,
 		},
