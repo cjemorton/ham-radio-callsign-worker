@@ -1,0 +1,27 @@
+# Development Environment Variables
+#
+# This file provides a template for local development secrets.
+# Copy this file to .dev.vars and update with your actual values.
+#
+# IMPORTANT: Never commit .dev.vars to version control!
+#
+# Setup:
+#   cp .dev.vars.example .dev.vars
+#   # Edit .dev.vars with your local secrets
+#   npm run dev
+#
+# For production, use Wrangler secrets instead:
+#   wrangler secret put ADMIN_API_KEY
+
+# Admin API Key for local development
+# Generate a strong key for development:
+#   openssl rand -hex 32
+#   OR
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+#
+# DO NOT use this example value in production!
+ADMIN_API_KEY=dev-test-key-replace-with-secure-random-string
+
+# Add additional secrets here as needed
+# Example:
+# EXTERNAL_API_KEY=your-external-api-key-here
