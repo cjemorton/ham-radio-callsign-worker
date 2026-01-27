@@ -25,6 +25,7 @@ A Cloudflare Worker service for ham radio callsign lookups, database management,
 - [External Database Synchronization](#external-database-synchronization)
 - [Example Scripts](#example-scripts) - **See [examples/scripts/](./examples/scripts/) for API interaction examples**
 - [Roadmap](#roadmap)
+- [Backlog Management](#backlog-management)
 - [Contributing](#contributing)
 - [License](#license)
 - [Support](#support)
@@ -3459,6 +3460,139 @@ This project follows a modular development approach as outlined in [Issue #4](ht
 | [#10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10) | Slave SQL/Redis Sync Engine | 6 | 📋 Planned |
 | [#11](https://github.com/cjemorton/ham-radio-callsign-worker/issues/11) | Data Diffing & Recovery | 5 | 📋 Planned |
 | [#12](https://github.com/cjemorton/ham-radio-callsign-worker/issues/12) | Fetch, Extraction & Validation | 4 | 📋 Planned |
+
+## Backlog Management
+
+This project uses an automated system for managing and creating GitHub issues from a comprehensive backlog definition.
+
+### Backlog Definition
+
+The complete backlog of planned features and enhancements is defined in [`.github/backlog.yaml`](.github/backlog.yaml). This YAML file contains structured definitions of all planned issues, including:
+
+- **Security Enhancements**: JWT/OAuth authentication, RBAC, security headers, API key management
+- **Configuration & Validation**: Comprehensive validation, migration tools, configuration previews
+- **Webhooks & External Triggers**: Event webhook system, scheduled updates, staleness detection
+- **Data Management**: Data source migration, snapshot garbage collection, advanced rollback, multi-region replication
+- **SQL/Redis Synchronization**: Database-specific optimizations, caching strategies, sync health dashboard, retry queues
+- **Monitoring & Alerting**: Comprehensive metrics, Prometheus export, alerting system, health checks
+- **API Enhancements**: GraphQL support, OpenAPI specification, versioning, batch operations, rate limiting tiers
+- **Documentation**: Interactive API docs, client libraries, operational runbooks
+- **PWA Integration**: Reference implementations, background sync, push notifications
+- **CI/CD**: GitHub Actions pipelines, dependency automation, canary deployments
+- **Testing**: Integration tests, load testing, security testing, i18n tests, CLI framework, E2E browser tests
+- **Additional Features**: Data export scheduling, analytics, autocomplete, advanced search, geo-location services
+
+### Creating Backlog Issues
+
+#### Using GitHub Actions (Recommended)
+
+The easiest way to create backlog issues is through the GitHub Actions workflow:
+
+1. Go to the **Actions** tab in the GitHub repository
+2. Select the **"Create Backlog Issues"** workflow
+3. Click **"Run workflow"**
+4. Choose whether to run in **dry-run mode** (preview only) or create issues
+5. Click **"Run workflow"** to start
+
+**Dry-run mode** (default): Preview which issues would be created without actually creating them. This is useful for:
+- Reviewing the backlog before creating issues
+- Testing changes to the backlog file
+- Understanding what issues already exist
+
+**Live mode**: Actually creates the issues in the repository. The automation will:
+- Check for existing issues with the same title
+- Skip issues that already exist (no duplicates)
+- Create new issues with appropriate labels and detailed descriptions
+- Provide a summary of created, skipped, and failed issues
+
+#### Using the Script Directly
+
+You can also run the automation script directly from the command line:
+
+```bash
+# Preview issues without creating them
+node .github/scripts/create-backlog-issues.js --dry-run
+
+# Create issues (requires GitHub token)
+export GITHUB_TOKEN=ghp_your_token_here
+node .github/scripts/create-backlog-issues.js
+
+# Use a custom backlog file
+node .github/scripts/create-backlog-issues.js --backlog-file custom-backlog.yaml
+
+# Specify repository explicitly
+node .github/scripts/create-backlog-issues.js --repo owner/repo
+```
+
+**Script Options:**
+- `--dry-run`: Preview mode, no issues are created
+- `--backlog-file <path>`: Path to backlog YAML file (default: `.github/backlog.yaml`)
+- `--token <token>`: GitHub personal access token (or use `GITHUB_TOKEN` environment variable)
+- `--repo <owner/repo>`: Repository in format owner/repo (auto-detected if not specified)
+
+**Required Permissions:**
+
+The GitHub token needs the following permissions:
+- `repo` scope (full access to repositories)
+- Specifically: `issues:write` permission
+
+To generate a personal access token:
+1. Go to GitHub Settings → Developer settings → Personal access tokens
+2. Generate new token (classic)
+3. Select `repo` scope
+4. Copy the token and use it with the script
+
+### Extending the Backlog
+
+To add new issues to the backlog:
+
+1. Edit `.github/backlog.yaml`
+2. Add new issue definitions following the existing format:
+
+```yaml
+- title: "Category: Brief Issue Title"
+  body: |
+    ## Objective
+    Clear description of what this issue aims to achieve.
+
+    ## Requirements
+    - Requirement 1
+    - Requirement 2
+    - Requirement 3
+
+    ## Acceptance Criteria
+    - Criterion 1
+    - Criterion 2
+
+    ## Related
+    - Related issues or features
+  labels:
+    - category-label
+    - enhancement
+```
+
+3. Commit and push your changes
+4. Run the automation workflow to create the new issues
+
+**Best Practices:**
+- Use clear, descriptive titles with category prefixes (e.g., "Security:", "API:", "Testing:")
+- Include comprehensive requirements and acceptance criteria
+- Add appropriate labels for categorization and filtering
+- Reference related issues or features
+- Keep issue descriptions focused on a single feature or enhancement
+
+### Re-running the Automation
+
+The automation is designed to be re-run safely:
+- **Duplicate Prevention**: The script checks existing issues by title and skips any that already exist
+- **Idempotent**: Running multiple times won't create duplicate issues
+- **Safe Updates**: You can add new issues to the backlog and re-run without affecting existing issues
+- **Error Recovery**: Failed issue creations are logged and can be retried
+
+To re-run after updating the backlog:
+1. Update `.github/backlog.yaml` with new issues
+2. Run the workflow or script again
+3. Only new issues (not already in the repository) will be created
 
 ## Contributing
 
