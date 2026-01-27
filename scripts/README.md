@@ -133,6 +133,45 @@ Add to GitHub Actions workflow:
 
 ---
 
+### demo-secret-injection.sh
+
+Demonstration and validation that secrets are properly injected and not hardcoded.
+
+**Usage:**
+```bash
+./scripts/demo-secret-injection.sh
+```
+
+**What It Does:**
+1. Verifies no hardcoded secrets in source code
+2. Shows how secrets are accessed via environment bindings
+3. Checks TypeScript type definitions for secrets
+4. Validates development secret configuration
+5. Demonstrates production secret management
+6. Provides comprehensive security summary
+
+**Example Output:**
+```
+✓ No secrets hardcoded in source code
+✓ Secrets accessed via env bindings (env.ADMIN_API_KEY)
+✓ Type definitions ensure safe secret access
+✓ Development: .dev.vars (git-ignored)
+✓ Production: Wrangler secrets (encrypted)
+```
+
+**Use Cases:**
+- Onboarding new developers
+- Security audits
+- CI/CD validation
+- Documentation and training
+- Verifying secret injection works correctly
+
+**Exit Codes:**
+- `0`: All checks passed, secrets properly configured
+- `1`: Hardcoded secrets found or configuration issues
+
+---
+
 ## Development vs Production
 
 | Aspect | Development | Production |
