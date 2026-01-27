@@ -3,6 +3,8 @@
 A Cloudflare Worker service for ham radio callsign lookups, database management, and administrative functions.
 
 > 📋 **For a comprehensive architectural overview, development roadmap, and implementation details, see [ARCHITECTURE.md](./ARCHITECTURE.md)**
+> 
+> 🔐 **For secrets management, API keys, and secure configuration, see [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md)**
 
 ## Table of Contents
 
@@ -17,7 +19,7 @@ A Cloudflare Worker service for ham radio callsign lookups, database management,
 - [Deployment](#deployment)
 - [Logging](#logging)
 - [Data Update Workflow](#data-update-workflow)
-- [Security](#security)
+- [Security](#security) - **See [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md) for complete secrets management guide**
 - [Monitoring](#monitoring)
 - [Performance Considerations](#performance-considerations)
 - [Progressive Web App (PWA) Integration](#progressive-web-app-pwa-integration) - **See [PWA_INTEGRATION.md](./PWA_INTEGRATION.md) for full guide**
@@ -466,7 +468,17 @@ This phase establishes the foundation for all subsequent data operations by prov
    wrangler login
    ```
 
-4. Run development server:
+4. Set up secrets for development (see [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md) for details):
+   ```bash
+   # Quick setup using the helper script
+   ./scripts/secrets-setup.sh dev
+   
+   # Or manually create .dev.vars with your API key
+   cp .dev.vars.example .dev.vars
+   # Edit .dev.vars with your actual secrets
+   ```
+
+5. Run development server:
    ```bash
    npm run dev
    ```
@@ -504,9 +516,15 @@ curl -H "Authorization: Bearer your-api-key-here" https://your-worker.workers.de
 
 **Setting Up Admin API Key**
 
+> 🔐 **For detailed setup instructions, see [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md)**
+
 The admin API key must be configured as a secret in your Cloudflare Worker:
 
 ```bash
+# Quick setup using the helper script (recommended)
+./scripts/secrets-setup.sh production
+
+# Or manually set the secret
 wrangler secret put ADMIN_API_KEY
 # Enter your secret API key when prompted
 ```
@@ -3033,6 +3051,8 @@ See [Issue #10](https://github.com/cjemorton/ham-radio-callsign-worker/issues/10
 
 ## Security
 
+> 🔐 **For complete secrets management documentation, see [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md)**
+
 ### Current Security Measures
 
 - CORS headers for API access control
@@ -3099,10 +3119,37 @@ JWT support is planned as a feature flag in the configuration system:
 
 ### Secrets Management
 
-- **Environment Secrets**: Stored via Wrangler secrets (never in code)
-- **Configuration Encryption**: Sensitive config values encrypted at rest
-- **Key Rotation**: Support for periodic API key rotation
+> 🔐 **Complete Guide**: See [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md) for comprehensive documentation
+
+**Overview:**
+- **Environment Secrets**: All sensitive data stored via Wrangler secrets (never in code)
+- **Development**: Use `.dev.vars` file (git-ignored) for local development
+- **Production**: Use `wrangler secret put` command for deployed workers
+- **Configuration Encryption**: Sensitive config values encrypted at rest in KV
+- **Key Rotation**: Support for periodic API key rotation (see rotation guide)
 - **Least Privilege**: Minimal permissions for all operations
+
+**Quick Start:**
+```bash
+# Development setup
+./scripts/secrets-setup.sh dev
+
+# Production setup
+./scripts/secrets-setup.sh production
+
+# Generate API key only
+./scripts/secrets-setup.sh generate
+```
+
+**Required Secrets:**
+- `ADMIN_API_KEY`: Admin endpoint authentication (required)
+
+**Key Features:**
+- Interactive setup script with validation
+- Secure random key generation (256-bit)
+- Zero-downtime rotation procedures
+- CI/CD integration guidance
+- Comprehensive troubleshooting guide
 
 ### Security Best Practices
 
