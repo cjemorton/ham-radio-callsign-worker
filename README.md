@@ -734,6 +734,161 @@ curl -X POST \
 
 ---
 
+#### POST /admin/fetch
+
+Trigger the on-demand fetch, extraction, and validation engine. This endpoint orchestrates the complete data pipeline:
+1. Fetches ZIP file from the configured origin URL
+2. Extracts the target file from the ZIP
+3. Validates data integrity (hash, schema, headers)
+4. Falls back to last known good data if validation fails
+5. Logs all events to R2 storage
+
+This is the primary endpoint for manually triggering data updates with full validation and fallback logic.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"skipValidation": false, "stagingMode": false}' \
+  https://your-worker.workers.dev/admin/fetch
+```
+
+**Request Body (optional):**
+```json
+{
+  "skipValidation": false,
+  "stagingMode": false
+}
+```
+
+- `skipValidation` (optional, default: false): Skip data validation step
+- `stagingMode` (optional, default: false): Enable staging/canary mode (stub)
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Fetch-extract-validate workflow completed successfully",
+    "status": "completed",
+    "metadata": {
+      "timestamp": "2026-01-26T12:00:00.000Z",
+      "duration": 2500,
+      "fetchTriggered": true,
+      "validationPassed": true,
+      "fallbackUsed": false,
+      "warnings": []
+    },
+    "data": {
+      "version": "2026-01-26T12-00-00-000Z",
+      "recordCount": 1000000,
+      "hash": "a1b2c3d4e5f6g7h8..."
+    }
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Response (Validation Failed - Fallback Used):**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Fetch-extract-validate workflow completed successfully",
+    "status": "fallback_used",
+    "metadata": {
+      "timestamp": "2026-01-26T12:00:00.000Z",
+      "duration": 3000,
+      "fetchTriggered": true,
+      "validationPassed": false,
+      "fallbackUsed": true,
+      "warnings": [
+        "Validation failed, attempting fallback",
+        "Using fallback data from 2026-01-25T10-00-00-000Z"
+      ]
+    },
+    "data": {
+      "version": "2026-01-25T10-00-00-000Z",
+      "recordCount": 999000,
+      "hash": "x9y8z7w6v5u4t3s2..."
+    }
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "error": "Fetch Failed",
+  "message": "Failed to complete fetch-extract-validate workflow",
+  "details": {
+    "status": "failed",
+    "errors": [
+      "Failed to fetch ZIP after 3 attempts: Network timeout",
+      "Validation failed and no fallback data available"
+    ],
+    "warnings": [],
+    "duration": 45000
+  },
+  "timestamp": "2026-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Workflow completed successfully (may include fallback)
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+- `500 Internal Server Error`: Workflow failed
+
+**Processing Steps:**
+
+The fetch endpoint executes the following steps:
+
+1. **Staleness Check**: Determines if data needs updating (can be overridden with on-demand flag)
+2. **Configuration Retrieval**: Loads data source configuration from KV
+3. **ZIP Fetch**: Downloads ZIP file from origin URL with retries
+4. **File Validation**: Verifies target file exists in ZIP
+5. **Extraction**: Extracts target file content from ZIP
+6. **Data Validation**: 
+   - Validates hash integrity (if expected hash provided)
+   - Validates schema/header match
+   - Counts records
+7. **Fallback Logic**: On validation failure, attempts to use last known good data
+8. **Success Path**: Stores validated data as new "last good data"
+9. **Event Logging**: All steps logged to R2 in JSONL format with daily rotation
+
+**Event Logs:**
+
+All processing events are logged to R2 at `events/logs-YYYY-MM-DD.jsonl` with the following event types:
+- `fetch`: ZIP download events
+- `extract`: File extraction events
+- `validate`: Data validation events
+- `fallback`: Fallback activation events
+- `error`: Error events with stack traces
+
+Each log entry includes:
+- Unique event ID
+- Timestamp
+- Event type and status
+- Duration and data size metrics
+- Error details and metadata
+
+**R2 Storage Structure:**
+```
+/events/
+  logs-2026-01-26.jsonl         # Daily event logs (JSONL)
+/metadata/
+  processing-{version}.json     # Processing metadata per version
+/diffs/
+  diff-{version}-{timestamp}.json  # Data differentials
+/fallback/
+  last-good-data-{version}.txt  # Last known good data
+```
+
+---
+
 #### POST /admin/rebuild
 
 Perform a full database rebuild from scratch.
@@ -1715,12 +1870,12 @@ See [Issue #8](https://github.com/cjemorton/ham-radio-callsign-worker/issues/8) 
 
 ## Data Update Workflow
 
-The worker implements a sophisticated data update workflow that will be fully realized across Phases 4-7:
+The worker implements a sophisticated data update workflow with the core fetch, extraction, and validation engine now fully implemented (Phase 4).
 
 ### Update Trigger Mechanisms
 
-1. **Scheduled Updates**: Periodic checks based on staleness detection
-2. **On-Demand Updates**: Admin-triggered via `/admin/update` endpoint
+1. **Scheduled Updates**: Periodic checks based on staleness detection (configurable max age)
+2. **On-Demand Updates**: Admin-triggered via `/admin/fetch` or `/admin/update` endpoints
 3. **Webhook Updates**: External trigger support (future enhancement)
 
 ### Update Process Flow
@@ -1728,57 +1883,173 @@ The worker implements a sophisticated data update workflow that will be fully re
 ```
 1. Trigger Detection (Schedule or Admin Request)
          ↓
-2. Fetch ZIP from Origin (Phase 4 - Issue #12)
+2. Staleness Check
+   - Query last update timestamp from METADATA_STORE
+   - Compare against configured max age (default: 24 hours)
+   - Skip if data is fresh (unless on-demand override)
+         ↓
+3. Configuration Retrieval
+   - Load data source configuration from CONFIG_KV
+   - Extract origin URL, target file, expected schema
+         ↓
+4. Fetch ZIP from Origin (✅ IMPLEMENTED)
    - Retrieve from KV-configured URL
-   - Retry logic with exponential backoff
-   - Validate ZIP integrity
+   - Retry logic with exponential backoff (max 3 attempts)
+   - 30-second timeout per attempt
+   - Log fetch events to R2
          ↓
-3. Extract and Validate (Phase 4 - Issue #12)
-   - Extract target file from ZIP
-   - Validate hash against expected value
-   - Verify schema/header match
-   - Content validation
+5. Extract and Validate (✅ IMPLEMENTED)
+   - Validate file presence in ZIP
+   - Extract target file from ZIP (supports uncompressed files)
+   - Calculate SHA-256 hash of content
+   - Validate hash against expected value (if provided)
+   - Verify schema/header match against expected fields
+   - Check delimiter and structure
+   - Count records
+   - Log extraction and validation events to R2
          ↓
-4. Differential Analysis (Phase 5 - Issue #11)
-   - Compare with previous version
-   - Identify added/modified/removed records
-   - Generate diff report
+6. Validation Decision Point
+   ├─ [PASS] → Store as Last Good Data
+   │           - Save content to R2
+   │           - Update fallback metadata in KV
+   │           - Update last fetch timestamp
+   │           - Return success
+   │
+   └─ [FAIL] → Fallback Logic (✅ IMPLEMENTED)
+               - Attempt to retrieve last good data from R2
+               - If available: Use fallback data and warn
+               - If unavailable: Return error
+               - Log fallback event to R2
          ↓
-5. Database Patching (Phase 5 - Issue #11)
+7. Database Patching (Phase 5 - Issue #11 - PLANNED)
    - Apply only changed records to D1
    - Transactional update
-   - Backup current state before update
+   - Differential analysis
          ↓
-6. Slave Synchronization (Phase 6 - Issue #10)
+8. Slave Synchronization (Phase 6 - Issue #10 - PLANNED)
    - Propagate changes to external SQL/Redis
    - Parallel sync to all configured slaves
-   - Track sync health and status
          ↓
-7. Logging and Metadata (Phase 7 - Issue #8)
-   - Store diff reports in R2
-   - Update version metadata
-   - Log event details
-   - Update health metrics
+9. Event Logging and Metadata (✅ IMPLEMENTED)
+   - Store event logs in R2 (JSONL format with daily rotation)
+   - Store processing metadata per version
+   - Store diffs and validation results
+   - Track fallback status
          ↓
-8. Success Response or Fallback
-   - Return success if all steps complete
-   - OR rollback to last known good state on failure
+10. Success Response or Error
+    - Return detailed status with metadata
+    - Include warnings if fallback was used
+```
+
+### Implemented Features (Phase 4)
+
+#### ✅ Fetch Engine (`src/engine/fetch.ts`)
+- Fetches ZIP files from KV-configured origin URLs
+- Implements retry logic with exponential backoff
+- Timeout protection (30s per attempt, 3 max retries)
+- Staleness detection based on configurable max age
+- Updates last fetch timestamp in METADATA_STORE
+
+#### ✅ Extraction Engine (`src/engine/extract.ts`)
+- Simple ZIP parser for extracting files
+- Validates file presence before extraction
+- Supports uncompressed (stored) files
+- Lists all files in ZIP for debugging
+- UTF-8 text decoding
+
+#### ✅ Validation Engine (`src/engine/validate.ts`)
+- SHA-256 hash calculation and validation
+- Schema validation with configurable delimiters
+- Header/field matching
+- Record counting
+- Comprehensive error and warning reporting
+
+#### ✅ Fallback Engine (`src/engine/fallback.ts`)
+- Stores last known good data in R2
+- Maintains fallback metadata in KV
+- Automatic fallback on validation failure
+- Retrieves and uses fallback data when needed
+- Admin operations to check/clear fallback status
+
+#### ✅ R2 Logging Engine (`src/engine/logger.ts`)
+- JSONL event log format
+- Daily log rotation (logs-YYYY-MM-DD.jsonl)
+- Event types: fetch, extract, validate, fallback, error
+- Metadata and diff storage
+- Unique event IDs with timestamps
+
+### R2 Storage Structure
+
+```
+/events/
+  logs-2026-01-26.jsonl         # Daily event logs (JSONL format)
+  logs-2026-01-27.jsonl
+/metadata/
+  processing-{version}.json     # Processing metadata per version
+/diffs/
+  diff-{version}-{timestamp}.json  # Data differentials (planned)
+/fallback/
+  last-good-data-{version}.txt  # Last known good data for rollback
 ```
 
 ### Validation and Fallback
 
-- **Hash Validation**: Every data file is validated against expected hash
-- **Schema Validation**: Headers and structure verified before processing
-- **Content Validation**: Data format and completeness checks
-- **Automatic Fallback**: On validation failure, retain last known good data
-- **Manual Rollback**: Admin endpoint to revert to specific version
+- **✅ Hash Validation**: Every data file validated against SHA-256 hash
+- **✅ Schema Validation**: Headers and structure verified before processing
+- **✅ Content Validation**: Delimiter, field count, and structure checks
+- **✅ Automatic Fallback**: On validation failure, uses last known good data
+- **Manual Rollback**: Admin endpoint to revert to specific version (planned)
 
 ### Error Handling
 
-- **Comprehensive Logging**: All failures logged with context
-- **Graceful Degradation**: Service continues with cached data during failures
-- **Admin Notifications**: Critical errors surfaced via admin endpoints
-- **Recovery Procedures**: Documented recovery steps for common scenarios
+- **✅ Comprehensive Logging**: All operations logged with timestamps and context
+- **✅ Graceful Degradation**: Fallback to last good data on validation failure
+- **✅ Event Tracking**: All events stored in R2 with unique IDs
+- **✅ Error Details**: Stack traces and metadata captured for debugging
+- **Admin Visibility**: Errors accessible via admin endpoints
+
+### Configuration
+
+The fetch-extract-validate workflow is configured via CONFIG_KV:
+
+```json
+{
+  "dataSource": {
+    "originZipUrl": "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
+    "zipFileName": "l_amat.zip",
+    "extractedFileName": "AM.dat",
+    "expectedSchema": {
+      "fields": ["record_type", "unique_system_identifier", "..."],
+      "delimiter": "|",
+      "hasHeader": false
+    }
+  },
+  "features": {
+    "canaryDeployment": false,
+    ...
+  }
+}
+```
+
+### Usage Examples
+
+**Trigger On-Demand Fetch:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/fetch
+```
+
+**Check Fallback Status:**
+```bash
+# Use the getFallbackStatus function from src/engine/fallback.ts
+```
+
+**View Event Logs:**
+```bash
+# Logs are stored in R2 at events/logs-YYYY-MM-DD.jsonl
+# Retrieve via R2 API or admin endpoint (future)
+```
 
 ## Rate Limiting
 
