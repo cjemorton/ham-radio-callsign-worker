@@ -13,16 +13,17 @@ A Cloudflare Worker service for ham radio callsign lookups, database management,
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
 - [Development](#development)
-- [Testing](#testing)
+- [Testing](#testing) - **See [TESTING.md](./TESTING.md) for comprehensive guide**
 - [Deployment](#deployment)
 - [Logging](#logging)
 - [Data Update Workflow](#data-update-workflow)
 - [Security](#security)
 - [Monitoring](#monitoring)
 - [Performance Considerations](#performance-considerations)
-- [Progressive Web App (PWA) Integration](#progressive-web-app-pwa-integration)
+- [Progressive Web App (PWA) Integration](#progressive-web-app-pwa-integration) - **See [PWA_INTEGRATION.md](./PWA_INTEGRATION.md) for full guide**
 - [Rate Limiting](#rate-limiting)
 - [External Database Synchronization](#external-database-synchronization)
+- [Example Scripts](#example-scripts) - **See [examples/scripts/](./examples/scripts/) for API interaction examples**
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -3364,6 +3365,49 @@ The project will provide examples for:
 - **Location-Based Search**: Find callsigns by geographic area
 
 See [Issue #7](https://github.com/cjemorton/ham-radio-callsign-worker/issues/7) for complete PWA integration specifications and sample implementations.
+
+---
+
+## Example Scripts
+
+The `examples/scripts/` directory contains ready-to-use Node.js scripts for interacting with the Ham Radio Callsign Worker API. These scripts demonstrate common operations and best practices.
+
+### Available Scripts
+
+- **`query-callsign.js`** - Look up a specific callsign
+- **`search-callsigns.js`** - Search for callsigns by query
+- **`trigger-update.js`** - Trigger data updates (admin)
+- **`check-status.js`** - Check worker health and status
+- **`bulk-query.js`** - Query multiple callsigns from a file
+
+### Quick Start
+
+```bash
+# Query a callsign
+node examples/scripts/query-callsign.js K1ABC
+
+# Search for callsigns
+node examples/scripts/search-callsigns.js smith
+
+# Check worker status
+node examples/scripts/check-status.js
+
+# Trigger update (requires admin key)
+ADMIN_API_KEY=your-key node examples/scripts/trigger-update.js
+```
+
+### Configuration
+
+All scripts support configuration via environment variables:
+
+```bash
+export WORKER_URL="https://your-worker.workers.dev"
+export ADMIN_API_KEY="your-admin-api-key"
+```
+
+For detailed usage instructions and examples, see [examples/scripts/README.md](./examples/scripts/README.md).
+
+---
 
 ## Roadmap
 
