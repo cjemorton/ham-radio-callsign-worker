@@ -7,6 +7,7 @@
 
 import type { Env, Config, ConfigData, ConfigVersion, ConfigHealth } from './types';
 import { log } from './utils';
+import { validateConfigData } from './validation';
 
 // Configuration keys in KV
 const CONFIG_KEY = 'config:current';
@@ -28,52 +29,19 @@ async function calculateHash(data: ConfigData): Promise<string> {
 
 /**
  * Validate configuration data structure
+ * 
+ * This is a legacy function that returns an array of error strings.
+ * For new code, use validateConfigData from validation.ts which provides
+ * more detailed error information with suggestions.
  */
 function validateConfig(data: ConfigData): string[] {
-	const errors: string[] = [];
-
-	// Validate data source
-	if (!data.dataSource) {
-		errors.push('Missing dataSource configuration');
-	} else {
-		if (!data.dataSource.originZipUrl) {
-			errors.push('Missing dataSource.originZipUrl');
-		}
-		if (!data.dataSource.zipFileName) {
-			errors.push('Missing dataSource.zipFileName');
-		}
-		if (!data.dataSource.extractedFileName) {
-			errors.push('Missing dataSource.extractedFileName');
-		}
-		if (!data.dataSource.expectedSchema) {
-			errors.push('Missing dataSource.expectedSchema');
-		} else if (!Array.isArray(data.dataSource.expectedSchema.fields) || data.dataSource.expectedSchema.fields.length === 0) {
-			errors.push('dataSource.expectedSchema.fields must be a non-empty array');
-		}
-	}
-
-	// Validate features
-	if (!data.features) {
-		errors.push('Missing features configuration');
-	} else {
-		if (typeof data.features.jwtAuth !== 'boolean') {
-			errors.push('features.jwtAuth must be a boolean');
-		}
-		if (typeof data.features.canaryDeployment !== 'boolean') {
-			errors.push('features.canaryDeployment must be a boolean');
-		}
-		if (typeof data.features.advancedSearch !== 'boolean') {
-			errors.push('features.advancedSearch must be a boolean');
-		}
-		if (typeof data.features.dataExport !== 'boolean') {
-			errors.push('features.dataExport must be a boolean');
-		}
-		if (typeof data.features.externalSync !== 'boolean') {
-			errors.push('features.externalSync must be a boolean');
-		}
-	}
-
-	return errors;
+	const result = validateConfigData(data);
+	// Convert ValidationError[] to string[] for backward compatibility
+	return result.errors.map(e => 
+		e.suggestion 
+			? `${e.message} (${e.suggestion})` 
+			: e.message
+	);
 }
 
 /**
