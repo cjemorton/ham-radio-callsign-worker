@@ -946,6 +946,313 @@ curl -H "X-API-Key: your-api-key" \
 - `401 Unauthorized`: Missing or invalid API key
 - `429 Too Many Requests`: Rate limit exceeded
 
+#### GET /api/v1/config/health
+
+Get the health status of the configuration system.
+
+**Request:**
+```bash
+curl https://your-worker.workers.dev/api/v1/config/health
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "version": "2024-01-26T12:00:00.000Z",
+    "hash": "abc123def456...",
+    "lastUpdated": "2024-01-26T12:00:00.000Z",
+    "kvAvailable": true
+  },
+  "timestamp": "2024-01-26T12:00:00.000Z"
+}
+```
+
+**Response Fields:**
+- `status`: Configuration health status - `healthy`, `degraded`, or `unavailable`
+- `version`: Current configuration version (ISO timestamp)
+- `hash`: SHA-256 hash of the current configuration
+- `lastUpdated`: When the configuration was last updated
+- `kvAvailable`: Whether the CONFIG_KV namespace is available
+- `validationErrors` (optional): Array of validation errors if status is degraded
+
+**Status Codes:**
+- `200 OK`: Health check successful
+- `503 Service Unavailable`: Configuration system unavailable
+
+---
+
+#### GET /api/v1/config/version
+
+Get version information for the current configuration.
+
+**Request:**
+```bash
+curl https://your-worker.workers.dev/api/v1/config/version
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "version": "2024-01-26T12:00:00.000Z",
+    "hash": "abc123def456...",
+    "timestamp": "2024-01-26T12:00:00.000Z",
+    "description": "Updated data source URL"
+  },
+  "timestamp": "2024-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Version information retrieved
+- `404 Not Found`: No configuration found
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### POST /admin/config/refresh
+
+Force reload the configuration from KV storage.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/config/refresh
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Configuration refreshed successfully",
+    "version": "2024-01-26T12:00:00.000Z",
+    "hash": "abc123def456...",
+    "timestamp": "2024-01-26T12:00:00.000Z"
+  },
+  "timestamp": "2024-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Configuration refreshed
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### POST /admin/config/update
+
+Update the system configuration.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d @config.json \
+  https://your-worker.workers.dev/admin/config/update
+```
+
+**Request Body:**
+```json
+{
+  "data": {
+    "dataSource": {
+      "originZipUrl": "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
+      "zipFileName": "l_amat.zip",
+      "extractedFileName": "AM.dat",
+      "expectedSchema": {
+        "fields": ["record_type", "callsign", "name", "..."],
+        "delimiter": "|",
+        "hasHeader": false
+      }
+    },
+    "backupEndpoints": {
+      "primary": "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
+      "secondary": "https://backup.example.com/l_amat.zip"
+    },
+    "features": {
+      "jwtAuth": false,
+      "canaryDeployment": false,
+      "advancedSearch": true,
+      "dataExport": true,
+      "externalSync": false
+    },
+    "rateLimits": {
+      "user": {
+        "requestsPerMinute": 100,
+        "burstSize": 10
+      },
+      "admin": {
+        "requestsPerMinute": 20,
+        "burstSize": 5
+      }
+    },
+    "cache": {
+      "ttl": 3600,
+      "maxEntries": 10000
+    }
+  },
+  "updatedBy": "admin@example.com",
+  "description": "Updated data source configuration"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Configuration updated successfully",
+    "version": "2024-01-26T12:30:00.000Z",
+    "hash": "def789ghi012...",
+    "timestamp": "2024-01-26T12:30:00.000Z"
+  },
+  "timestamp": "2024-01-26T12:30:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Configuration updated
+- `400 Bad Request`: Invalid configuration data
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### GET /admin/config/versions
+
+List all available configuration versions in history.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/config/versions
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "count": 5,
+    "versions": [
+      {
+        "version": "2024-01-26T12:30:00.000Z",
+        "hash": "def789ghi012...",
+        "timestamp": "2024-01-26T12:30:00.000Z",
+        "updatedBy": "admin@example.com",
+        "description": "Updated data source configuration"
+      },
+      {
+        "version": "2024-01-25T10:00:00.000Z",
+        "hash": "abc123def456...",
+        "timestamp": "2024-01-25T10:00:00.000Z",
+        "updatedBy": "admin@example.com",
+        "description": "Initial configuration"
+      }
+    ]
+  },
+  "timestamp": "2024-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Version list retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### POST /admin/config/rollback
+
+Rollback the configuration to a previous version.
+
+**Request:**
+```bash
+curl -X POST \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "2024-01-25T10:00:00.000Z"}' \
+  https://your-worker.workers.dev/admin/config/rollback
+```
+
+**Request Body:**
+```json
+{
+  "version": "2024-01-25T10:00:00.000Z"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Configuration rolled back successfully",
+    "version": "2024-01-25T10:00:00.000Z",
+    "hash": "abc123def456...",
+    "timestamp": "2024-01-25T10:00:00.000Z"
+  },
+  "timestamp": "2024-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Rollback successful
+- `400 Bad Request`: Invalid version or version not found
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
+#### GET /admin/config/current
+
+Get the complete current configuration.
+
+**Request:**
+```bash
+curl -H "X-API-Key: your-api-key" \
+  https://your-worker.workers.dev/admin/config/current
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "data": {
+      "dataSource": { ... },
+      "backupEndpoints": { ... },
+      "features": { ... },
+      "rateLimits": { ... },
+      "cache": { ... }
+    },
+    "version": {
+      "version": "2024-01-26T12:00:00.000Z",
+      "hash": "abc123def456...",
+      "timestamp": "2024-01-26T12:00:00.000Z",
+      "updatedBy": "admin@example.com",
+      "description": "Current active configuration"
+    }
+  },
+  "timestamp": "2024-01-26T12:00:00.000Z"
+}
+```
+
+**Status Codes:**
+- `200 OK`: Configuration retrieved
+- `401 Unauthorized`: Missing or invalid API key
+- `429 Too Many Requests`: Rate limit exceeded
+
+---
+
 ---
 
 ### Response Format
@@ -998,7 +1305,7 @@ To handle preflight requests, send an `OPTIONS` request to any endpoint.
 
 ### Overview
 
-The Ham Radio Callsign Worker uses a multi-layered configuration approach combining static Wrangler configuration with dynamic KV-based runtime configuration (to be implemented in Phase 3 - [Issue #5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5)).
+The Ham Radio Callsign Worker uses a multi-layered configuration approach combining static Wrangler configuration with dynamic KV-based runtime configuration. The configuration system has been implemented with full support for versioning, rollback, and health monitoring.
 
 ### Environment Variables
 
@@ -1023,13 +1330,13 @@ The following Cloudflare resources are configured as placeholders in `wrangler.t
 
 To activate these bindings, uncomment the relevant sections in `wrangler.toml` and configure the resource IDs through the Cloudflare dashboard.
 
-### Dynamic Configuration (Phase 3)
+### Dynamic Configuration
 
-Phase 3 will introduce a comprehensive KV-based configuration system with the following capabilities:
+The system now includes a comprehensive KV-based configuration system with the following capabilities:
 
 #### Configuration Structure
 
-The dynamic configuration will be stored as a single namespaced JSON object in KV, containing:
+The dynamic configuration is stored as a single namespaced JSON object in KV (`CONFIG_KV` namespace), containing:
 
 - **Data Source Configuration**
   - Origin ZIP URL for data fetching
@@ -1046,25 +1353,87 @@ The dynamic configuration will be stored as a single namespaced JSON object in K
   - Backup data source URLs
   - Fallback endpoints for redundancy
 
-- **External Sync Configuration** (Phase 6)
-  - Slave SQL database connections
-  - Redis cache endpoints
-  - Sync frequency and retry parameters
+- **External Sync Configuration**
+  - SQL database connections (host, credentials, table name)
+  - Redis cache endpoints (host, port, password, database)
+  - Enable/disable flags for each sync target
 
 - **Feature Flags**
-  - JWT authentication toggle
-  - Canary deployment settings
-  - Experimental feature flags
+  - `jwtAuth`: Enable/disable JWT authentication
+  - `canaryDeployment`: Enable/disable canary deployment mode
+  - `advancedSearch`: Enable/disable advanced search features
+  - `dataExport`: Enable/disable data export functionality
+  - `externalSync`: Enable/disable external database synchronization
 
 #### Configuration Management Features
 
-- **Version Control**: Track configuration versions with hashes
-- **Rollback Capability**: Admin endpoint to revert to previous configurations
-- **Hot Reload**: Update configuration without worker redeployment
-- **Health Monitoring**: Configuration validation and health checks
-- **Audit Trail**: Track all configuration changes
+The configuration system includes:
 
-See [Issue #5](https://github.com/cjemorton/ham-radio-callsign-worker/issues/5) for the complete specification.
+- **Version Control**: All configuration changes are versioned with SHA-256 hashes and ISO timestamps
+- **Rollback Capability**: Admin endpoint (`POST /admin/config/rollback`) to revert to any previous configuration version
+- **Hot Reload**: Refresh configuration (`POST /admin/config/refresh`) without worker redeployment
+- **Health Monitoring**: Health endpoint (`GET /api/v1/config/health`) validates configuration and checks KV availability
+- **Audit Trail**: Track all configuration changes with `updatedBy` and `description` fields
+- **History Management**: Maintains up to 10 previous configuration versions in KV
+- **Validation**: Comprehensive validation ensures configuration integrity before saving
+
+#### Using the Configuration System
+
+**Setting Up CONFIG_KV**
+
+1. Create a KV namespace in Cloudflare dashboard or via Wrangler:
+   ```bash
+   wrangler kv:namespace create "CONFIG_KV"
+   wrangler kv:namespace create "CONFIG_KV" --preview
+   ```
+
+2. Update `wrangler.toml` with your namespace IDs:
+   ```toml
+   [[kv_namespaces]]
+   binding = "CONFIG_KV"
+   id = "your_config_kv_namespace_id"
+   preview_id = "your_preview_config_kv_namespace_id"
+   ```
+
+**Default Configuration**
+
+If CONFIG_KV is not available or no configuration exists, the system uses a default configuration with:
+- FCC amateur radio data source (l_amat.zip)
+- All feature flags disabled except `advancedSearch` and `dataExport`
+- Standard rate limits (100 req/min for users, 20 req/min for admins)
+- 1-hour cache TTL
+
+**Updating Configuration**
+
+Use the `POST /admin/config/update` endpoint to update configuration:
+
+```bash
+curl -X POST   -H "X-API-Key: your-api-key"   -H "Content-Type: application/json"   -d '{
+    "data": {
+      "dataSource": { ... },
+      "features": { ... },
+      ...
+    },
+    "updatedBy": "admin@example.com",
+    "description": "Enable JWT authentication"
+  }'   https://your-worker.workers.dev/admin/config/update
+```
+
+**Monitoring Configuration Health**
+
+Check configuration health via the public endpoint:
+
+```bash
+curl https://your-worker.workers.dev/api/v1/config/health
+```
+
+This returns:
+- Configuration status (healthy/degraded/unavailable)
+- Current version and hash
+- KV availability
+- Any validation errors
+
+See the [API Endpoints](#api-endpoints) section for complete documentation of all configuration endpoints.
 
 ## Development
 

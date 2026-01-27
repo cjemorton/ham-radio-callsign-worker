@@ -11,6 +11,7 @@ import { withRateLimit, withAuth, withLogging, withErrorHandling, compose } from
 import { jsonResponse, errorResponse } from './utils';
 import * as userHandlers from './handlers/user';
 import * as adminHandlers from './handlers/admin';
+import * as configHandlers from './handlers/config';
 
 // Export types for external use
 export type { Env } from './types';
@@ -62,6 +63,10 @@ function createRouter(): Router {
 	router.get('/api/v1/search', userMiddleware(userHandlers.searchCallsigns));
 	router.get('/api/v1/export', userMiddleware(userHandlers.exportDatabase));
 
+	// Configuration endpoints (no auth required for health and version)
+	router.get('/api/v1/config/health', userMiddleware(configHandlers.getHealth));
+	router.get('/api/v1/config/version', userMiddleware(configHandlers.getVersion));
+
 	// Admin API endpoints (with authentication and stricter rate limiting: 20 requests per minute)
 	const adminMiddleware = compose(
 		withErrorHandling,
@@ -76,6 +81,13 @@ function createRouter(): Router {
 	router.get('/admin/logs', adminMiddleware(adminHandlers.getLogs));
 	router.get('/admin/metadata', adminMiddleware(adminHandlers.getMetadata));
 	router.get('/admin/stats', adminMiddleware(adminHandlers.getStats));
+
+	// Admin configuration endpoints
+	router.post('/admin/config/refresh', adminMiddleware(configHandlers.refresh));
+	router.post('/admin/config/update', adminMiddleware(configHandlers.updateConfig));
+	router.post('/admin/config/rollback', adminMiddleware(configHandlers.rollback));
+	router.get('/admin/config/versions', adminMiddleware(configHandlers.getVersions));
+	router.get('/admin/config/current', adminMiddleware(configHandlers.getCurrent));
 
 	return router;
 }

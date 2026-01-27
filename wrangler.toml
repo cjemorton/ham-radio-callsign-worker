@@ -24,6 +24,11 @@ LOG_LEVEL = "info"
 # id = "your_metadata_kv_namespace_id"
 # preview_id = "your_preview_metadata_kv_namespace_id"
 
+# [[kv_namespaces]]
+# binding = "CONFIG_KV"
+# id = "your_config_kv_namespace_id"
+# preview_id = "your_preview_config_kv_namespace_id"
+
 # D1 Database binding for callsign data storage
 # Uncomment and configure when ready to use
 # [[d1_databases]]
