@@ -113,7 +113,7 @@ describe('Admin Logging Endpoints', () => {
 			const mockLogContent = Array.from({ length: 10 }, (_, i) => 
 				JSON.stringify({
 					eventId: `${i}`,
-					timestamp: `2024-01-15T10:0${i}:00.000Z`,
+					timestamp: `2024-01-15T10:${i.toString().padStart(2, '0')}:00.000Z`,
 					type: 'fetch',
 					status: 'success',
 					details: { message: `Log ${i}` }

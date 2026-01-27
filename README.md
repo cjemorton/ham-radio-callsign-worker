@@ -2047,7 +2047,7 @@ wrangler deploy --env production
 
 ## Logging
 
-The worker implements a comprehensive structured logging system with event tracking, audit trails, and monitoring capabilities. For detailed information, see [LOGGING.md](./LOGGING.md).
+The worker implements a comprehensive structured logging system with event tracking, audit trails, and monitoring capabilities. For detailed information, see [LOGGING.md](LOGGING.md).
 
 ### Overview
 
@@ -2199,7 +2199,7 @@ POST /admin/rollback
 4. **Rotation Schedule**: Run rotation weekly or monthly
 5. **Alerting**: Set up alerts for status changes and error patterns
 
-For complete documentation, examples, and troubleshooting, see [LOGGING.md](./LOGGING.md).
+For complete documentation, examples, and troubleshooting, see [LOGGING.md](LOGGING.md).
 
 ## Data Update Workflow
 

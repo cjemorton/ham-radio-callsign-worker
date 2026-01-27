@@ -166,7 +166,7 @@ Logged when errors occur.
 
 **Example Request**:
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/logs/events?limit=50&date=2024-01-15&type=error"
 ```
 
@@ -212,7 +212,7 @@ curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
 
 **Example Request**:
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/logs/files?limit=30"
 ```
 
@@ -245,7 +245,7 @@ curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
 
 **Example Request**:
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/logs/stats"
 ```
 
@@ -297,7 +297,7 @@ Logs are automatically rotated daily. Each day's events are written to a new fil
 **Example Request**:
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"retentionDays": 30, "performArchive": true, "archiveDays": 7}' \
   "https://your-worker.example.com/admin/logs/rotate"
@@ -346,7 +346,7 @@ Before deletion, logs can be archived to a separate prefix (`events/archive/`) f
 
 **Example Request**:
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/status"
 ```
 
@@ -425,14 +425,14 @@ When data validation fails, the system automatically falls back to the last know
 #### 1. View Recent Errors
 
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/logs/events?type=error&limit=20"
 ```
 
 #### 2. Check Fallback Status
 
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/metadata"
 ```
 
@@ -442,7 +442,7 @@ If automatic updates fail, trigger a manual update:
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/fetch"
 ```
 
@@ -452,7 +452,7 @@ If new data causes issues, rollback to a previous version:
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"version": "v1.2.2"}' \
   "https://your-worker.example.com/admin/rollback"
@@ -463,7 +463,7 @@ curl -X POST \
 After recovery, verify system health:
 
 ```bash
-curl -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
   "https://your-worker.example.com/admin/status"
 ```
 
