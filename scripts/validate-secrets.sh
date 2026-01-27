@@ -113,9 +113,11 @@ FOUND_SECRETS=false
 
 for pattern in "${SECRET_PATTERNS[@]}"; do
     # Search in tracked files, excluding known safe files
-    if git ls-files | grep -E '\.(ts|js|json|yaml|yml|toml|sh)$' | \
-       xargs grep -l -E -i "$pattern" 2>/dev/null | \
-       grep -v -E '(\.example$|\.sample$|SECRETS_MANAGEMENT\.md|\.git-secrets-patterns)'; then
+    MATCHES=$(git ls-files | grep -E '\.(ts|js|json|yaml|yml|toml|sh)$' | \
+       xargs -r grep -l -E -i "$pattern" 2>/dev/null | \
+       grep -v -E '(\.example$|\.sample$|SECRETS_MANAGEMENT\.md|\.git-secrets-patterns)' || true)
+    if [ -n "$MATCHES" ]; then
+        echo "$MATCHES"
         log_error "Potential secret found matching pattern: $pattern"
         FOUND_SECRETS=true
     fi
@@ -159,7 +161,9 @@ echo
 
 # Check 7: Check for test files with secrets
 log_info "Checking test files for hardcoded secrets..."
-if git ls-files | grep -E 'test/.*\.(ts|js)$' | xargs grep -l -E -i "(api[_-]?key|password|secret).*[:=].*['\"][a-zA-Z0-9_\-]{20,}['\"]" 2>/dev/null | head -5; then
+TEST_MATCHES=$(git ls-files | grep -E 'test/.*\.(ts|js)$' | xargs -r grep -l -E -i "(api[_-]?key|password|secret).*[:=].*['\"][a-zA-Z0-9_\-]{20,}['\"]" 2>/dev/null | head -5 || true)
+if [ -n "$TEST_MATCHES" ]; then
+    echo "$TEST_MATCHES"
     log_warning "Test files may contain hardcoded values (review for secrets)"
 else
     log_success "No obvious secrets in test files"

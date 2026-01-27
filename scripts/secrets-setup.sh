@@ -264,8 +264,9 @@ interactive_mode() {
 # Main script logic
 main() {
     # Check if we're in the right directory
-    if [ ! -f "package.json" ] || [ ! -f "wrangler.toml" ]; then
+    if [ ! -f "package.json" ] || ([ ! -f "wrangler.toml" ] && [ ! -f "wrangler.toml.example" ]); then
         log_error "This script must be run from the project root directory"
+        log_info "Expected to find package.json and wrangler.toml (or wrangler.toml.example)"
         exit 1
     fi
     

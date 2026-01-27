@@ -9,7 +9,7 @@
 # Documentation: https://developers.cloudflare.com/workers/wrangler/configuration/
 
 #:schema node_modules/wrangler/config-schema.json
-name = "ham-radio-callsign-worker"
+name = "ham-radio-callsign-worker-example"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]

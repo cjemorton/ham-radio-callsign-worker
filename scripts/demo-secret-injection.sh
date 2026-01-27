@@ -76,12 +76,16 @@ echo
 log_info "Checking how ADMIN_API_KEY is accessed in middleware.ts..."
 echo
 
-if grep -n "env.ADMIN_API_KEY" src/middleware.ts; then
-    echo
-    log_success "Secret is accessed via environment binding (env.ADMIN_API_KEY)"
-    log_success "This is the correct pattern - secrets come from Wrangler, not code"
+if [ -f src/middleware.ts ]; then
+    if grep -n "env.ADMIN_API_KEY" src/middleware.ts; then
+        echo
+        log_success "Secret is accessed via environment binding (env.ADMIN_API_KEY)"
+        log_success "This is the correct pattern - secrets come from Wrangler, not code"
+    else
+        log_warning "Could not find environment binding usage in middleware.ts"
+    fi
 else
-    log_warning "Could not find environment binding usage"
+    log_warning "src/middleware.ts not found - project structure may have changed"
 fi
 
 echo
@@ -95,12 +99,16 @@ echo
 log_info "Checking types.ts for secret definitions..."
 echo
 
-if grep -A 2 "ADMIN_API_KEY" src/types.ts; then
-    echo
-    log_success "Secret is properly typed as optional string"
-    log_success "This ensures TypeScript type safety for secret access"
+if [ -f src/types.ts ]; then
+    if grep -A 2 "ADMIN_API_KEY" src/types.ts; then
+        echo
+        log_success "Secret is properly typed as optional string"
+        log_success "This ensures TypeScript type safety for secret access"
+    else
+        log_warning "Could not find ADMIN_API_KEY type definition"
+    fi
 else
-    log_warning "Could not find type definition"
+    log_warning "src/types.ts not found - project structure may have changed"
 fi
 
 echo
