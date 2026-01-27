@@ -82,6 +82,7 @@ function createRouter(): Router {
 	router.get('/admin/logs', adminMiddleware(adminHandlers.getLogs));
 	router.get('/admin/metadata', adminMiddleware(adminHandlers.getMetadata));
 	router.get('/admin/stats', adminMiddleware(adminHandlers.getStats));
+	router.get('/admin/diffs', adminMiddleware(adminHandlers.getDiffHistory));
 
 	// Admin configuration endpoints
 	router.post('/admin/config/refresh', adminMiddleware(configHandlers.refresh));
