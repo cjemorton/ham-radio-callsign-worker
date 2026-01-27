@@ -1,0 +1,206 @@
+# Cloudflare Worker Configuration Template
+# 
+# This file serves as an example for wrangler.toml configuration.
+# Copy the sections you need and update with your actual values.
+#
+# For secrets (API keys, tokens), use Wrangler secrets instead:
+#   wrangler secret put SECRET_NAME
+#
+# Documentation: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+#:schema node_modules/wrangler/config-schema.json
+name = "ham-radio-callsign-worker-example"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Worker configuration
+workers_dev = true
+
+# Environment variables (NON-SENSITIVE ONLY)
+# Use wrangler secrets for sensitive data: `wrangler secret put KEY`
+[vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "info"  # Options: debug, info, warn, error
+
+# ============================================================================
+# KV NAMESPACE BINDINGS
+# ============================================================================
+# KV namespaces for caching and metadata storage
+# 
+# Setup:
+#   1. Create namespaces:
+#      wrangler kv:namespace create "CALLSIGN_CACHE"
+#      wrangler kv:namespace create "METADATA_STORE"
+#      wrangler kv:namespace create "CONFIG_KV"
+#   
+#   2. Copy the IDs from the output and paste below
+#   
+#   3. Uncomment and configure each namespace
+
+# Callsign lookup cache
+# [[kv_namespaces]]
+# binding = "CALLSIGN_CACHE"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"           # Replace with your KV namespace ID
+# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"   # Replace with preview KV namespace ID
+
+# Database metadata storage
+# [[kv_namespaces]]
+# binding = "METADATA_STORE"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# Dynamic configuration storage (may contain encrypted sensitive data)
+# [[kv_namespaces]]
+# binding = "CONFIG_KV"
+# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# preview_id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+
+# ============================================================================
+# D1 DATABASE BINDING
+# ============================================================================
+# D1 SQLite database for callsign data storage
+#
+# Setup:
+#   1. Create database:
+#      wrangler d1 create ham-radio-callsigns
+#   
+#   2. Copy the database_id from the output and paste below
+#   
+#   3. Uncomment and configure
+
+# [[d1_databases]]
+# binding = "CALLSIGN_DB"
+# database_name = "ham-radio-callsigns"
+# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"           # Replace with your D1 database ID
+# preview_database_id = "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"   # Optional: separate preview DB
+
+# ============================================================================
+# R2 BUCKET BINDING
+# ============================================================================
+# R2 object storage for data exports, backups, and logs
+#
+# Setup:
+#   1. Create bucket:
+#      wrangler r2 bucket create callsign-exports
+#   
+#   2. Uncomment and configure below
+
+# [[r2_buckets]]
+# binding = "DATA_EXPORTS"
+# bucket_name = "callsign-exports"
+# preview_bucket_name = "callsign-exports-preview"   # Optional: separate preview bucket
+
+# ============================================================================
+# ENVIRONMENT-SPECIFIC CONFIGURATIONS
+# ============================================================================
+
+# Production Environment
+# Uncomment and configure for production deployment
+# [env.production]
+# name = "ham-radio-callsign-worker-production"
+# workers_dev = false
+# route = "callsign.example.com/*"  # Replace with your domain
+# 
+# [env.production.vars]
+# ENVIRONMENT = "production"
+# LOG_LEVEL = "warn"
+# 
+# # Production KV Namespaces
+# [[env.production.kv_namespaces]]
+# binding = "CALLSIGN_CACHE"
+# id = "prod_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# 
+# [[env.production.kv_namespaces]]
+# binding = "METADATA_STORE"
+# id = "prod_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# 
+# [[env.production.kv_namespaces]]
+# binding = "CONFIG_KV"
+# id = "prod_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# 
+# # Production D1 Database
+# [[env.production.d1_databases]]
+# binding = "CALLSIGN_DB"
+# database_name = "ham-radio-callsigns-production"
+# database_id = "prod_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# 
+# # Production R2 Bucket
+# [[env.production.r2_buckets]]
+# binding = "DATA_EXPORTS"
+# bucket_name = "callsign-exports-production"
+
+# Staging Environment
+# Uncomment and configure for staging deployment
+# [env.staging]
+# name = "ham-radio-callsign-worker-staging"
+# workers_dev = true
+# 
+# [env.staging.vars]
+# ENVIRONMENT = "staging"
+# LOG_LEVEL = "debug"
+# 
+# # Staging KV Namespaces
+# [[env.staging.kv_namespaces]]
+# binding = "CALLSIGN_CACHE"
+# id = "staging_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# 
+# [[env.staging.kv_namespaces]]
+# binding = "METADATA_STORE"
+# id = "staging_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# 
+# [[env.staging.kv_namespaces]]
+# binding = "CONFIG_KV"
+# id = "staging_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# 
+# # Staging D1 Database
+# [[env.staging.d1_databases]]
+# binding = "CALLSIGN_DB"
+# database_name = "ham-radio-callsigns-staging"
+# database_id = "staging_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# 
+# # Staging R2 Bucket
+# [[env.staging.r2_buckets]]
+# binding = "DATA_EXPORTS"
+# bucket_name = "callsign-exports-staging"
+
+# ============================================================================
+# SECRETS MANAGEMENT
+# ============================================================================
+# Secrets are NOT stored in this file!
+# Use Wrangler CLI to manage secrets securely:
+#
+# Set a secret:
+#   wrangler secret put ADMIN_API_KEY
+#
+# List secrets (shows names only, not values):
+#   wrangler secret list
+#
+# Delete a secret:
+#   wrangler secret delete ADMIN_API_KEY
+#
+# For environment-specific secrets:
+#   wrangler secret put ADMIN_API_KEY --env production
+#
+# Required secrets for this worker:
+#   - ADMIN_API_KEY: Admin endpoint authentication
+#
+# See SECRETS_MANAGEMENT.md for detailed instructions.
+
+# ============================================================================
+# RATE LIMITING
+# ============================================================================
+# Note: Rate limiting is implemented in the worker code using in-memory
+# storage for development and KV for production.
+# 
+# Configuration is stored in CONFIG_KV and can be updated dynamically
+# without redeployment. See the configuration management documentation.
+
+# ============================================================================
+# NOTES
+# ============================================================================
+# 1. Never commit sensitive data to this file
+# 2. Use wrangler secrets for all API keys, tokens, and passwords
+# 3. Preview IDs are optional but recommended for safe testing
+# 4. Each environment (dev, staging, prod) should have separate resources
+# 5. Review SECRETS_MANAGEMENT.md for complete setup instructions

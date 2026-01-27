@@ -830,12 +830,71 @@ The project follows a phased development approach, with each phase building upon
 
 ### Secrets Management
 
-**Best Practices**:
+> 🔐 **Complete Documentation**: See [SECRETS_MANAGEMENT.md](./SECRETS_MANAGEMENT.md)
+
+**Architecture Overview**:
+
+The project uses a multi-layered approach to secret management:
+
+1. **Wrangler Secrets** (Primary for sensitive data)
+   - Encrypted at rest and in transit
+   - Write-only API (cannot be read back)
+   - Injected at runtime via environment bindings
+   - Suitable for: API keys, tokens, passwords
+   - Example: `ADMIN_API_KEY`
+
+2. **KV Storage** (For dynamic configuration)
+   - Can store encrypted sensitive configuration
+   - Supports versioning and rollback
+   - Read/write via API
+   - Suitable for: Dynamic endpoints, feature flags
+   - Example: External sync endpoints (when encrypted)
+
+3. **Environment Variables** (Non-sensitive only)
+   - Defined in `wrangler.toml`
+   - Committed to version control
+   - Suitable for: Environment names, log levels, public config
+   - Example: `ENVIRONMENT`, `LOG_LEVEL`
+
+**Secret Types in This Project**:
+
+| Secret | Storage Method | Purpose | Rotation Frequency |
+|--------|----------------|---------|-------------------|
+| `ADMIN_API_KEY` | Wrangler Secret | Admin endpoint authentication | 90 days |
+| External SQL credentials | CONFIG_KV (encrypted) | Optional database sync | As needed |
+| External Redis credentials | CONFIG_KV (encrypted) | Optional cache sync | As needed |
+| Backup source URLs | CONFIG_KV | Fallback data sources | As needed |
+
+**Development vs Production**:
+
+- **Development**: Secrets stored in `.dev.vars` file (git-ignored)
+- **Production**: Secrets managed via `wrangler secret put`
+- **CI/CD**: Secrets stored in GitHub Actions secrets
+
+**Tools and Automation**:
+
+```bash
+# Interactive setup
+./scripts/secrets-setup.sh
+
+# Quick development setup
+./scripts/secrets-setup.sh dev
+
+# Production deployment
+./scripts/secrets-setup.sh production
+```
+
+**Security Best Practices**:
 - Never commit secrets to git
 - Use Cloudflare Worker secrets for API keys
 - Store sensitive configuration in encrypted KV
-- Rotate secrets regularly
-- Audit secret access
+- Rotate secrets regularly (see rotation procedures)
+- Audit secret access via logs
+- Use strong random keys (256-bit minimum)
+- Follow least privilege principle
+- Implement zero-downtime rotation
+- Log security events (never log secret values)
+- Use different keys per environment (dev/staging/prod)
 
 ---
 

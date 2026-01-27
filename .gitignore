@@ -12,11 +12,25 @@ worker/
 # TypeScript
 *.tsbuildinfo
 
-# Environment variables
+# Environment variables and secrets (but not scripts that manage them)
 .env
 .env.local
 .env.*.local
 .dev.vars
+*.secret
+*.key
+secrets/
+*secret*.txt
+*secret*.json
+*secret*.yaml
+*secret*.yml
+*credential*.txt
+*credential*.json
+
+# Allow scripts for secrets management
+!scripts/*secret*.sh
+!*SECRETS_MANAGEMENT.md
+!.git-secrets-patterns
 
 # Logs
 logs/
