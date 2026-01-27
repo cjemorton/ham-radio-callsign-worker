@@ -52,6 +52,87 @@ Interactive helper script for setting up and managing secrets.
 
 See [SECRETS_MANAGEMENT.md](../SECRETS_MANAGEMENT.md) for complete documentation.
 
+---
+
+### setup-git-secrets.sh
+
+Setup git-secrets pre-commit hooks to prevent committing sensitive data.
+
+**Usage:**
+```bash
+# Run the setup script
+./scripts/setup-git-secrets.sh
+```
+
+**Features:**
+- Installs git-secrets pre-commit hooks
+- Registers AWS secret patterns
+- Adds custom patterns for this project (API keys, tokens, passwords)
+- Configures allowed patterns (exceptions for documentation examples)
+
+**Prerequisites:**
+- `git-secrets` must be installed:
+  - macOS: `brew install git-secrets`
+  - Linux: Clone and `make install` from [awslabs/git-secrets](https://github.com/awslabs/git-secrets)
+
+**What It Protects:**
+- API keys and tokens (including 64-char hex keys)
+- Passwords and secret keys
+- Database connection strings
+- Private keys
+- JWT tokens
+- Environment variable assignments with secrets
+
+**Manual Commands:**
+```bash
+# Scan current changes
+git secrets --scan
+
+# Scan entire repository history
+git secrets --scan-history
+
+# List all registered patterns
+git secrets --list
+```
+
+---
+
+### validate-secrets.sh
+
+Validate that secrets are properly configured and no secrets are accidentally committed.
+
+**Usage:**
+```bash
+# Run validation checks
+./scripts/validate-secrets.sh
+
+# Run in CI mode (exit with error if issues found)
+./scripts/validate-secrets.sh --ci
+```
+
+**What It Checks:**
+1. `.gitignore` contains required secret patterns
+2. No `.dev.vars` is committed to git
+3. `.dev.vars.example` template exists
+4. No obvious secrets in tracked files
+5. Required documentation exists
+6. Scripts are executable
+7. Test files don't contain hardcoded secrets
+8. `wrangler.toml` doesn't contain secrets in vars section
+
+**Exit Codes:**
+- `0`: All checks passed (or warnings only in non-CI mode)
+- `1`: Validation failed with errors
+
+**CI Integration:**
+Add to GitHub Actions workflow:
+```yaml
+- name: Validate Secrets
+  run: ./scripts/validate-secrets.sh --ci
+```
+
+---
+
 ## Development vs Production
 
 | Aspect | Development | Production |

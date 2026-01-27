@@ -17,6 +17,11 @@ worker/
 .env.local
 .env.*.local
 .dev.vars
+*.secret
+*.key
+*secret*
+*credential*
+secrets/
 
 # Logs
 logs/
