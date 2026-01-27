@@ -184,12 +184,17 @@ async function validateKV(options: CliOptions): Promise<number> {
 			return 2;
 		}
 
-		// Get the current config from KV
+		// Try to get config using wrangler kv:key get
+		// Note: This requires CONFIG_KV to be configured in wrangler.toml
 		let configJson: string;
 		try {
-			configJson = execSync('wrangler kv:key get "config:current" --namespace-id $(grep CONFIG_KV wrangler.toml | grep -oP "id = \"\\K[^\"]+") 2>/dev/null', {
+			// Use wrangler to get the key directly
+			// This is a simplified approach - in production, consider using wrangler's JS API
+			// or parsing wrangler.toml properly with a TOML parser
+			configJson = execSync('wrangler kv:key get "config:current" --namespace-id "$(grep CONFIG_KV wrangler.toml | grep -oP \'id = "\\K[^"]+\')" 2>/dev/null', {
 				encoding: 'utf-8',
 				stdio: ['pipe', 'pipe', 'pipe'],
+				shell: '/bin/bash',
 			});
 		} catch {
 			console.error('Error: Could not retrieve configuration from KV.');
@@ -197,6 +202,8 @@ async function validateKV(options: CliOptions): Promise<number> {
 			console.error('  1. CONFIG_KV is configured in wrangler.toml');
 			console.error('  2. You are authenticated with wrangler (run: wrangler login)');
 			console.error('  3. A configuration exists in KV');
+			console.error('');
+			console.error('Note: For production use, consider using wrangler\'s JavaScript API');
 			return 2;
 		}
 

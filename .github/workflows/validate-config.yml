@@ -66,18 +66,18 @@ jobs:
             echo "### Validating: \`$config_file\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             
-            # Run validation and capture output
-            if npm run validate:config -- --file "$config_file" > validation_output.txt 2>&1; then
+            # Run validation and capture output directly
+            if validation_output=$(npm run validate:config -- --file "$config_file" 2>&1); then
               echo "✅ **Valid**" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
-              cat validation_output.txt >> $GITHUB_STEP_SUMMARY
+              echo "$validation_output" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
             else
               echo "❌ **Invalid**" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
-              cat validation_output.txt >> $GITHUB_STEP_SUMMARY
+              echo "$validation_output" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
               all_passed=false
             fi

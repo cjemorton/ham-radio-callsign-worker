@@ -286,9 +286,16 @@ describe('Configuration Validation Module', () => {
 			const result = validateConfigData(config);
 
 			expect(result.valid).toBe(false);
+			// Should have errors for: id, type, endpoint, and enabled
 			expect(result.errors.length).toBeGreaterThan(0);
-			// Should have errors for id, type, endpoint, and enabled
-			expect(result.errors.filter(e => e.field.startsWith('externalSync.sql.endpoints[0]'))).toHaveLength(4);
+			const sqlEndpointErrors = result.errors.filter(e => e.field.startsWith('externalSync.sql.endpoints[0]'));
+			expect(sqlEndpointErrors.length).toBeGreaterThanOrEqual(4);
+			
+			// Check specific required fields are flagged
+			expect(sqlEndpointErrors.some(e => e.field.includes('.id'))).toBe(true);
+			expect(sqlEndpointErrors.some(e => e.field.includes('.type'))).toBe(true);
+			expect(sqlEndpointErrors.some(e => e.field.includes('.endpoint'))).toBe(true);
+			expect(sqlEndpointErrors.some(e => e.field.includes('.enabled'))).toBe(true);
 		});
 
 		it('should detect invalid backup endpoint URLs', () => {

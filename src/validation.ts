@@ -273,12 +273,12 @@ export function validateConfigData(data: ConfigData): ValidationResult {
 								severity: 'error',
 							});
 						}
-						if (endpoint.ttl !== undefined && (typeof endpoint.ttl !== 'number' || endpoint.ttl <= 0)) {
+						if (endpoint.ttl !== undefined && (typeof endpoint.ttl !== 'number' || endpoint.ttl < 0)) {
 							warnings.push({
 								field: `externalSync.redis.endpoints[${index}].ttl`,
-								message: 'TTL should be a positive number',
+								message: 'TTL should be a non-negative number',
 								severity: 'warning',
-								suggestion: 'Use a reasonable TTL value (e.g., 3600 for 1 hour)',
+								suggestion: 'Use a reasonable TTL value (e.g., 3600 for 1 hour), or 0 for no expiration',
 							});
 						}
 					});
