@@ -6,6 +6,7 @@ export interface Env {
 	// KV Namespace bindings
 	CALLSIGN_CACHE?: KVNamespace;
 	METADATA_STORE?: KVNamespace;
+	CONFIG_KV?: KVNamespace;
 
 	// D1 Database binding
 	CALLSIGN_DB?: D1Database;
@@ -70,4 +71,102 @@ export interface LogEntry {
 	level: string;
 	message: string;
 	details?: unknown;
+}
+
+/**
+ * Configuration data structure stored in KV
+ */
+export interface ConfigData {
+	// Data source configuration
+	dataSource: {
+		originZipUrl: string;
+		zipFileName: string;
+		extractedFileName: string;
+		expectedSchema: {
+			fields: string[];
+			delimiter?: string;
+			hasHeader?: boolean;
+		};
+	};
+
+	// Backup endpoints
+	backupEndpoints?: {
+		primary?: string;
+		secondary?: string;
+		tertiary?: string;
+	};
+
+	// External database synchronization
+	externalSync?: {
+		sql?: {
+			enabled: boolean;
+			connectionString?: string;
+			tableName?: string;
+		};
+		redis?: {
+			enabled: boolean;
+			host?: string;
+			port?: number;
+			password?: string;
+			database?: number;
+		};
+	};
+
+	// Feature flags
+	features: {
+		jwtAuth: boolean;
+		canaryDeployment: boolean;
+		advancedSearch: boolean;
+		dataExport: boolean;
+		externalSync: boolean;
+	};
+
+	// Rate limiting configuration
+	rateLimits?: {
+		user: {
+			requestsPerMinute: number;
+			burstSize?: number;
+		};
+		admin: {
+			requestsPerMinute: number;
+			burstSize?: number;
+		};
+	};
+
+	// Caching configuration
+	cache?: {
+		ttl: number;
+		maxEntries?: number;
+	};
+}
+
+/**
+ * Configuration version metadata
+ */
+export interface ConfigVersion {
+	version: string;
+	hash: string;
+	timestamp: string;
+	updatedBy?: string;
+	description?: string;
+}
+
+/**
+ * Complete configuration object with versioning
+ */
+export interface Config {
+	data: ConfigData;
+	version: ConfigVersion;
+}
+
+/**
+ * Configuration health status
+ */
+export interface ConfigHealth {
+	status: 'healthy' | 'degraded' | 'unavailable';
+	version: string;
+	hash: string;
+	lastUpdated: string;
+	kvAvailable: boolean;
+	validationErrors?: string[];
 }
