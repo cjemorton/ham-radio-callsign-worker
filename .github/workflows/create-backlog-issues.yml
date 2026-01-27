@@ -1,0 +1,52 @@
+name: Create Backlog Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (preview only, no issues created)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Run backlog issue creation script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd .github/scripts
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            node create-backlog-issues.js --dry-run
+          else
+            node create-backlog-issues.js
+          fi
+
+      - name: Summary
+        run: |
+          echo "### Backlog Issue Creation Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "**Mode:** Dry Run (preview only)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No issues were created. Re-run the workflow with dry_run=false to create issues." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Mode:** Live (issues created)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the logs above for details on which issues were created or skipped." >> $GITHUB_STEP_SUMMARY
+          fi
