@@ -51,8 +51,8 @@ jobs:
           echo "## Configuration Validation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Find all config files
-          config_files=$(find examples/configs -name "*.json" -type f 2>/dev/null || echo "")
+          # Find all config files (excluding files with 'invalid' in the name as they are negative examples)
+          config_files=$(find examples/configs -name "*.json" -type f ! -name "*invalid*" 2>/dev/null || echo "")
           
           if [ -z "$config_files" ]; then
             echo "ℹ️ No configuration files found to validate" >> $GITHUB_STEP_SUMMARY
