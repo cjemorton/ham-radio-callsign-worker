@@ -12,9 +12,9 @@
     "build": "tsc --project tsconfig.build.json --noEmit",
     "lint": "eslint src/ --ext .ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "validate:config": "tsx scripts/validate-config.ts",
-    "validate:config:file": "tsx scripts/validate-config.ts --file",
-    "validate:config:kv": "tsx scripts/validate-config.ts --kv"
+    "validate:config": "npx tsx scripts/validate-config.ts",
+    "validate:config:file": "npx tsx scripts/validate-config.ts --file",
+    "validate:config:kv": "npx tsx scripts/validate-config.ts --kv"
   },
   "keywords": [
     "ham-radio",
