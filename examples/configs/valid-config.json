@@ -1,0 +1,65 @@
+{
+  "dataSource": {
+    "originZipUrl": "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip",
+    "zipFileName": "l_amat.zip",
+    "extractedFileName": "AM.dat",
+    "expectedSchema": {
+      "fields": [
+        "record_type",
+        "unique_system_identifier",
+        "uls_file_number",
+        "ebf_number",
+        "callsign",
+        "operator_class",
+        "group_code",
+        "region_code",
+        "trustee_callsign",
+        "trustee_indicator",
+        "physician_certification",
+        "ve_signature",
+        "systematic_callsign_change",
+        "vanity_callsign_change",
+        "vanity_relationship",
+        "previous_callsign",
+        "previous_operator_class",
+        "trustee_name"
+      ],
+      "delimiter": "|",
+      "hasHeader": false
+    }
+  },
+  "backupEndpoints": {
+    "primary": "https://data.fcc.gov/download/pub/uls/complete/l_amat.zip"
+  },
+  "externalSync": {
+    "sql": {
+      "enabled": false,
+      "endpoints": []
+    },
+    "redis": {
+      "enabled": false,
+      "endpoints": []
+    }
+  },
+  "features": {
+    "jwtAuth": false,
+    "canaryDeployment": false,
+    "advancedSearch": true,
+    "dataExport": true,
+    "externalSync": false
+  },
+  "rateLimits": {
+    "user": {
+      "requestsPerMinute": 100,
+      "burstSize": 10
+    },
+    "admin": {
+      "requestsPerMinute": 1000,
+      "burstSize": 50
+    }
+  },
+  "cache": {
+    "ttl": 3600,
+    "maxEntries": 10000
+  }
+}

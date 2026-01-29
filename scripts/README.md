@@ -4,6 +4,97 @@ This directory contains utility scripts for managing the Ham Radio Callsign Work
 
 ## Available Scripts
 
+### validate-config.ts
+
+**NEW** - Configuration validation tool for ensuring configuration files are valid before deployment.
+
+**Usage:**
+```bash
+# Validate a local JSON configuration file
+npm run validate:config -- --file examples/configs/valid-config.json
+
+# Validate configuration stored in Cloudflare KV
+npm run validate:config -- --kv
+
+# Get verbose output with warnings
+npm run validate:config -- --file config.json --verbose
+
+# Get JSON output (useful for CI/CD)
+npm run validate:config -- --file config.json --json
+
+# Show help
+npm run validate:config -- --help
+```
+
+**Features:**
+- Comprehensive validation of all configuration fields
+- Type checking for all properties
+- URL validation for data source endpoints
+- Detailed error messages with actionable suggestions
+- Warning detection for non-critical issues
+- JSON output mode for CI/CD integration
+- Support for both local files and KV-stored configs
+
+**What It Validates:**
+- **dataSource**: URL validity, required fields, schema structure
+- **backupEndpoints**: URL validity for backup sources
+- **externalSync**: SQL and Redis endpoint configurations
+- **features**: Boolean flag types
+- **rateLimits**: Positive numbers for rate limiting
+- **cache**: TTL and max entries validation
+
+**Exit Codes:**
+- `0`: Configuration is valid
+- `1`: Validation failed (errors found)
+- `2`: Invalid usage or file not found
+
+**CI/CD Integration:**
+The validation tool is automatically run in GitHub Actions when configuration files change. See `.github/workflows/validate-config.yml` for the CI workflow.
+
+**Examples:**
+
+```bash
+# Quick validation during development
+npm run validate:config -- --file examples/configs/valid-config.json
+
+# Validate before deploying to production
+npm run validate:config -- --kv --verbose
+
+# Use in a shell script
+if npm run validate:config -- --file config.json --json > validation.json; then
+  echo "Config is valid"
+else
+  echo "Config has errors"
+  cat validation.json
+  exit 1
+fi
+```
+
+**Validation Output Example:**
+```
+Validating configuration file: config.json
+
+✗ Configuration validation failed with 2 error(s):
+
+1. [dataSource.originZipUrl]
+   Error: originZipUrl is not a valid URL
+   Suggestion: Provide a valid HTTP or HTTPS URL
+
+2. [features.jwtAuth]
+   Error: jwtAuth must be a boolean
+   Suggestion: Set to true or false
+
+⚠ Found 1 warning(s):
+
+1. [rateLimits]
+   Warning: Rate limits not configured
+   Suggestion: Add rate limits to prevent abuse
+```
+
+See [Configuration Validation](#configuration-validation) section below for more details.
+
+---
+
 ### secrets-setup.sh
 
 Interactive helper script for setting up and managing secrets.
@@ -169,6 +260,151 @@ Demonstration and validation that secrets are properly injected and not hardcode
 **Exit Codes:**
 - `0`: All checks passed, secrets properly configured
 - `1`: Hardcoded secrets found or configuration issues
+
+---
+
+## Configuration Validation
+
+### Why Validate Configuration?
+
+Configuration errors can cause:
+- Service outages and downtime
+- Data processing failures
+- Security vulnerabilities
+- Difficult-to-debug runtime errors
+
+The validation tool catches these issues **before deployment**, ensuring configurations are correct and complete.
+
+### Validation Workflow
+
+```
+┌─────────────────┐
+│ Edit Config     │
+│ File            │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Run Validation  │
+│ Tool            │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+┌───────┐ ┌────────┐
+│ Valid │ │ Errors │
+└───┬───┘ └───┬────┘
+    │         │
+    │         ▼
+    │    ┌────────────┐
+    │    │ Fix Errors │
+    │    └─────┬──────┘
+    │          │
+    │          └──────┐
+    │                 │
+    ▼                 ▼
+┌─────────────────────┐
+│ Commit & Push       │
+└──────────┬──────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ CI Validates         │
+│ Automatically        │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│ Deploy if Valid      │
+└──────────────────────┘
+```
+
+### Local Validation
+
+Before committing configuration changes:
+
+```bash
+# Validate your config file
+npm run validate:config -- --file examples/configs/my-config.json
+
+# Get detailed output
+npm run validate:config -- --file examples/configs/my-config.json --verbose
+```
+
+### CI/CD Validation
+
+Configuration validation runs automatically in CI when:
+- Configuration files in `examples/configs/` change
+- Config-related source files change
+- On pull requests and main branch pushes
+
+The CI workflow:
+1. Validates all configuration files
+2. Posts results as PR comments
+3. **Blocks merge if validation fails**
+4. Provides actionable error messages
+
+### Common Validation Errors
+
+#### Invalid URL
+```
+Error: originZipUrl is not a valid URL
+Suggestion: Provide a valid HTTP or HTTPS URL
+```
+**Fix:** Use a complete URL with `http://` or `https://` protocol.
+
+#### Missing Required Field
+```
+Error: Missing zipFileName
+Suggestion: Provide the name of the ZIP file (e.g., "l_amat.zip")
+```
+**Fix:** Add the missing field to your configuration.
+
+#### Invalid Type
+```
+Error: jwtAuth must be a boolean
+Suggestion: Set to true or false
+```
+**Fix:** Change string values like `"yes"` to boolean `true` or `false`.
+
+#### Empty Array
+```
+Error: expectedSchema.fields must not be empty
+Suggestion: Add at least one field name to the array
+```
+**Fix:** Add field names to the array: `["callsign", "operator_class"]`
+
+### Configuration Best Practices
+
+1. **Always validate locally** before committing
+2. **Use example configs** as templates
+3. **Test with actual data** when possible
+4. **Document custom configurations** with comments (in JSON: use description fields)
+5. **Keep backups** of working configurations
+6. **Review validation warnings** even if config is valid
+
+### Adding Custom Validations
+
+To add new validation rules:
+
+1. Edit `src/validation.ts`
+2. Add validation logic to `validateConfigData()`
+3. Add tests in `test/validation.test.ts`
+4. Update documentation
+
+Example:
+```typescript
+// In src/validation.ts
+if (data.cache && data.cache.ttl > 86400) {
+  warnings.push({
+    field: 'cache.ttl',
+    message: 'TTL is very high (>24 hours)',
+    severity: 'warning',
+    suggestion: 'Consider a lower TTL for fresher data'
+  });
+}
+```
 
 ---
 

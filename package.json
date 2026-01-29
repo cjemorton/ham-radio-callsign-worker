@@ -9,9 +9,12 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "cf-typegen": "wrangler types",
-    "build": "tsc --noEmit",
+    "build": "tsc --project tsconfig.build.json --noEmit",
     "lint": "eslint src/ --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "validate:config": "npx tsx scripts/validate-config.ts",
+    "validate:config:file": "npx tsx scripts/validate-config.ts --file",
+    "validate:config:kv": "npx tsx scripts/validate-config.ts --kv"
   },
   "keywords": [
     "ham-radio",
@@ -23,10 +26,12 @@
   "license": "MIT",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.3",
     "vitest": "^1.0.0",
     "wrangler": "^3.81.0"

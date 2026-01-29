@@ -14,6 +14,7 @@ A Cloudflare Worker service for ham radio callsign lookups, database management,
 - [Getting Started](#getting-started)
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
+- [Configuration Validation](#configuration-validation) - **See [CONFIG_VALIDATION.md](./CONFIG_VALIDATION.md) for complete guide**
 - [Development](#development)
 - [Testing](#testing) - **See [TESTING.md](./TESTING.md) for comprehensive guide**
 - [Deployment](#deployment)
